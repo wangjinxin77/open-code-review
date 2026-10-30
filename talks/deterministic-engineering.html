@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>确定性工程如何驯服不确定的 Agent · Open Code Review</title>
+<style>
+  :root {
+    --bg: #0e100e;
+    --slide: #141714;
+    --ink: #f4f1ea;
+    --muted: #b7b1a6;
+    --dim: #8c867c;
+    --line: rgba(244, 241, 234, 0.14);
+    --copper: #e0a15c;
+    --copper-dim: rgba(224, 161, 92, 0.16);
+    --moss: #9cbe86;
+    --moss-dim: rgba(156, 190, 134, 0.16);
+    --violet: #c4b6ef;
+    --violet-dim: rgba(196, 182, 239, 0.16);
+    --rose: #e39b90;
+    --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+    --sans: "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
+      "WenQuanYi Micro Hei", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "Sarasa Mono SC", "Noto Sans Mono CJK SC", "JetBrains Mono",
+      "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, a { font-family: inherit; }
+  a { color: var(--copper); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: #f0c48a; }
+
+  .viewport {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .frame { position: relative; }
+  .stage {
+    width: 1280px;
+    height: 720px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: top left;
+    background: var(--slide);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .slide {
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: 42px 56px 78px;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 16px;
+  }
+  .slide.on { display: grid; }
+
+  .kicker {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 24px;
+    color: var(--dim);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .kicker b { color: var(--copper); font-weight: 650; letter-spacing: 0.08em; }
+  h1 {
+    margin: 0;
+    font-size: 40px;
+    line-height: 1.18;
+    font-weight: 680;
+    letter-spacing: -0.02em;
+  }
+  .sub {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1.45;
+  }
+  .src {
+    position: absolute;
+    left: 56px;
+    right: 56px;
+    bottom: 28px;
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .src a { color: #c9b396; }
+  .chrome {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    color: var(--dim);
+    font-size: 12px;
+    font-family: var(--mono);
+    pointer-events: none;
+  }
+  .chrome .bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 2px;
+    background: var(--copper);
+  }
+  .help {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 9, 8, 0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+  .help.on { display: flex; }
+  .help .card {
+    width: 420px;
+    background: #1c201c;
+    border: 1px solid var(--line);
+    padding: 28px 32px;
+    border-radius: 12px;
+  }
+  .help h2 { margin: 0 0 12px; font-size: 20px; }
+  .help p { margin: 0 0 8px; color: var(--muted); line-height: 1.5; }
+
+  .hero-title { font-size: 46px; max-width: 980px; }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 28px;
+    align-items: end;
+  }
+  .stat-stack { display: flex; flex-direction: column; gap: 14px; }
+  .stat {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    display: grid;
+    grid-template-columns: 148px 1fr auto;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .stat .name { color: var(--muted); font-size: 14px; }
+  .stat .path { font-family: var(--mono); font-size: 20px; }
+  .stat .mult { font-family: var(--mono); font-size: 28px; color: var(--moss); }
+  .meta-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+  }
+  .pill {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 12px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; min-height: 0; }
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 24px;
+    background: rgba(255, 255, 255, 0.02);
+    min-height: 0;
+  }
+  .panel h2 { margin: 0 0 10px; font-size: 26px; }
+  .panel p { margin: 0; color: var(--muted); font-size: 18px; line-height: 1.55; }
+  .panel ol { margin: 12px 0 0; padding-left: 20px; color: var(--ink); }
+  .panel li { margin: 8px 0; font-size: 16px; line-height: 1.45; }
+  .tag {
+    display: inline-block;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .tag.det { background: var(--copper-dim); color: var(--copper); }
+  .tag.llm { background: var(--violet-dim); color: var(--violet); }
+  .tag.mix { background: var(--moss-dim); color: var(--moss); }
+  .ask {
+    margin-top: 8px;
+    font-size: 28px;
+    line-height: 1.3;
+  }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px 20px 18px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .card .n {
+    font-family: var(--mono);
+    color: var(--copper);
+    font-size: 13px;
+  }
+  .card h2 { margin: 8px 0; font-size: 24px; }
+  .card p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.5; }
+  .judgment {
+    margin-top: 16px;
+    padding: 16px 20px;
+    border-left: 3px solid var(--copper);
+    background: var(--copper-dim);
+    font-size: 22px;
+    line-height: 1.4;
+  }
+  .fine { margin-top: 12px; color: var(--dim); font-size: 14px; line-height: 1.5; }
+
+  .pipe {
+    display: flex;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pipe li {
+    flex: 1;
+    min-height: 118px;
+    margin-left: -10px;
+    padding: 16px 16px 14px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 16px 50%);
+  }
+  .pipe li:first-child {
+    margin-left: 0;
+    padding-left: 16px;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%);
+  }
+  .pipe li strong { font-size: 18px; font-weight: 680; }
+  .pipe li span { margin-top: 6px; font-size: 13px; line-height: 1.35; color: inherit; opacity: 0.82; }
+  .pipe li.det { background: #3a2c1c; color: #f3d7b0; }
+  .pipe li.llm { background: #2c2740; color: #ddd4f7; }
+  .pipe li.mix { background: #243228; color: #d5ead0; }
+  .legend { display: flex; gap: 18px; margin-top: 14px; color: var(--muted); font-size: 14px; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .sw.det { background: #e0a15c; }
+  .sw.llm { background: #c4b6ef; }
+  .sw.mix { background: #9cbe86; }
+  .forbid {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 16px;
+    align-items: center;
+  }
+  .forbid b { font-size: 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    color: var(--ink);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; }
+  td.who { white-space: nowrap; color: var(--copper); font-weight: 650; }
+  td.who.llm { color: var(--violet); }
+  td.who.mix { color: var(--moss); }
+  table.dense { font-size: 13px; }
+  table.dense th, table.dense td { padding: 5px 8px; }
+  table.dense tr.hi td { background: rgba(156, 190, 134, 0.1); }
+  table.dense tr.lo td { background: rgba(227, 155, 144, 0.08); }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .two { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 22px; min-height: 0; }
+  .gates { list-style: none; margin: 0; padding: 0; }
+  .gates li {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 15px;
+  }
+  .gates .i { font-family: var(--mono); color: var(--copper); }
+  .term {
+    background: #0c0e0c;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.55;
+    color: #d9d3c8;
+  }
+  .term .cmd { color: var(--moss); }
+  .term .dim { color: #8d887e; }
+  .term .g { color: #9cbe86; }
+  .term .r { color: #e39b90; }
+  .note {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .bound {
+    display: grid;
+    grid-template-columns: 1fr 64px 1fr;
+    gap: 8px;
+    align-items: stretch;
+    min-height: 0;
+  }
+  .bound .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--dim);
+    font-size: 28px;
+  }
+  .steps { margin: 14px 0 0; padding: 0; list-style: none; }
+  .steps li {
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .steps b { color: var(--ink); }
+
+  .bars { display: flex; flex-direction: column; gap: 16px; }
+  .metric-label {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .pair { display: grid; gap: 6px; }
+  .brow {
+    display: grid;
+    grid-template-columns: 118px 1fr 92px;
+    gap: 10px;
+    align-items: center;
+    font-size: 14px;
+  }
+  .track {
+    height: 18px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .fill { height: 100%; border-radius: 4px; }
+  .fill.ocr { background: #9cbe86; }
+  .fill.cc { background: #e0a15c; }
+  .brow .v { font-family: var(--mono); text-align: right; }
+
+  .call {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: rgba(156, 190, 134, 0.08);
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  .call strong { color: var(--moss); }
+  .call.warn { background: rgba(224, 161, 92, 0.08); }
+  .call.warn strong { color: var(--copper); }
+
+  .axis-wrap { margin: 8px 0 18px; }
+  .axis-name { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  .axis {
+    position: relative;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+  }
+  .band {
+    position: absolute;
+    top: 6px;
+    height: 24px;
+    border-radius: 4px;
+  }
+  .band.ocr { background: #9cbe86; }
+  .band.cc { background: #e0a15c; }
+  .ticks {
+    display: flex;
+    justify-content: space-between;
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  .principles { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .principle {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 16px;
+    align-items: center;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .principle .n {
+    font-family: var(--mono);
+    font-size: 28px;
+    color: var(--copper);
+  }
+  .principle h2 { margin: 0 0 4px; font-size: 22px; }
+  .principle p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+
+  .links { columns: 2; column-gap: 28px; margin: 0; padding: 0; list-style: none; }
+  .links li { break-inside: avoid; margin: 0 0 10px; font-size: 14px; line-height: 1.4; color: var(--muted); }
+  .links a { word-break: break-all; }
+
+  @media print {
+    .viewport { display: block; height: auto; overflow: visible; }
+    .frame { width: auto !important; height: auto !important; }
+    .stage {
+      position: static;
+      transform: none !important;
+      width: auto;
+      height: auto;
+      box-shadow: none;
+    }
+    .slide {
+      display: grid !important;
+      position: relative;
+      width: 1280px;
+      height: 720px;
+      break-after: page;
+      page-break-after: always;
+    }
+    .chrome, .help { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="viewport">
+  <div class="frame" id="frame">
+    <div class="stage" id="stage">
+
+      <section class="slide on" data-section="开场">
+        <div>
+          <div class="kicker"><b>技术分享</b><span>系统设计如何驯服 Agent 的不确定性 · 20–25 分钟</span></div>
+          <h1 class="hero-title">确定性工程如何驯服不确定的 Agent</h1>
+          <p class="sub">Open Code Review 架构解析。同一模型，换一套 Harness：主指标翻倍，精度翻得更多。这是系统对照，不是模型榜。</p>
+        </div>
+        <div class="hero-grid">
+          <div class="stat-stack">
+            <div class="stat">
+              <div class="name">SEM-F1<br>论文主指标</div>
+              <div class="path num">11.57% → 25.10%</div>
+              <div class="mult">2.17×</div>
+            </div>
+            <div class="stat">
+              <div class="name">Precision<br>由表内相除</div>
+              <div class="path num">7.23% → 33.90%</div>
+              <div class="mult">≈4.7×</div>
+            </div>
+            <div class="stat">
+              <div class="name">Recall<br>OCR 更低</div>
+              <div class="path num">28.90% → 20.00%</div>
+              <div class="mult" style="color:var(--copper)">少而准</div>
+            </div>
+          </div>
+          <div>
+            <p class="sub" style="margin-top:0">后端都是 Claude-4.6-Opus。OpenCodeReview v1.3.1 对 Claude Code v2.1.169 的 <span class="num">/code-review</span>。4.7× 是 33.90 ÷ 7.23，论文正文写的倍数是 SEM-F1 的 2.17×。</p>
+            <div class="meta-row">
+              <span class="pill">架构约 60%</span>
+              <span class="pill">数据约 25%</span>
+              <span class="pill">原则约 15%</span>
+              <span class="pill">← → 翻页 · ? 帮助</span>
+            </div>
+          </div>
+        </div>
+        <p class="src">Li et al., OpenCodeReview, arXiv:2608.09290, 表 3 与 §4.2。<a href="https://arxiv.org/abs/2608.09290">arxiv.org/abs/2608.09290</a> · HTML <a href="https://arxiv.org/html/2608.09290v2">2608.09290v2</a></p>
+      </section>
+
+      <section class="slide" data-section="现象">
+        <div>
+          <div class="kicker"><b>01 · 现象</b><span>先看见发散，再问为什么</span></div>
+          <h1>同一个变更，多问一轮</h1>
+        </div>
+        <div>
+          <div class="split">
+            <div class="panel">
+              <span class="tag llm">通用 Agent</span>
+              <h2>越找越多</h2>
+              <p>Cursor Agent 这类通用循环，再追问一轮，往往会再翻出一批评论。文件覆盖变了，行号对不上刚才那一版，真问题和顺嘴一说混在一起。</p>
+              <ol>
+                <li>大变更集里，它会挑着看。</li>
+                <li>报出来的位置经常漂。</li>
+                <li>提示词动几个字，结论就换一副面貌。</li>
+              </ol>
+            </div>
+            <div class="panel">
+              <span class="tag det">Open Code Review</span>
+              <h2>再问，文件集不动</h2>
+              <p>哪些文件进入审查，由过滤器决定，不由模型当场发挥。评论若被 diff 里的事实直接打脸，会被拿掉；多问一轮不会因此换一套审查范围。</p>
+              <ol>
+                <li>进不进审查，程序先算完。</li>
+                <li>行号靠代码片段回贴，不靠模型口报。</li>
+                <li>核查者只能删被证伪的评论，不能另起一条。</li>
+              </ol>
+            </div>
+          </div>
+          <p class="ask">模型可以是同一个。变的是谁来约束流程。</p>
+        </div>
+        <p class="src">左栏三点来自 README「Why Open Code Review」，是产品对通用 Agent 的观察，没有 Cursor 的公开评测数字。量化对照从第 9 页开始，对象是 Claude Code 与 Codex。<a href="https://github.com/alibaba/open-code-review/blob/main/README.zh-CN.md">README.zh-CN.md</a></p>
+      </section>
+
+      <section class="slide" data-section="现象">
+        <div>
+          <div class="kicker"><b>02 · 结构</b><span>三个弱点都在流程上，不在权重上</span></div>
+          <h1>纯语言驱动，审查流程没有硬约束</h1>
+        </div>
+        <div>
+          <div class="cards">
+            <article class="card">
+              <div class="n">01</div>
+              <h2>覆盖不全</h2>
+              <p>变更集一大，Agent 会偷懒，选择性漏掉文件。看哪些文件，变成了一次自由生成。</p>
+            </article>
+            <article class="card">
+              <div class="n">02</div>
+              <h2>位置漂移</h2>
+              <p>评论经常对不上真实代码。行号和文件引用会漂，读者得自己重新找位置。</p>
+            </article>
+            <article class="card">
+              <div class="n">03</div>
+              <h2>质量不稳</h2>
+              <p>Skill 和提示词用自然语言驱动，难调试。措辞一调，审查质量就跟着晃。</p>
+            </article>
+          </div>
+          <div class="judgment">同一套能力，放进没有硬约束的循环里，结果会随轨迹漂移。</div>
+          <p class="fine">论文把这背后收成两件事：工具动作空间太大，跑两遍对不齐；有效上下文又常常停在 diff 附近，深问题够不着。由此引出三道工程题：检索会污染或不够、多文件要兼顾连贯和并行、幻觉评论会把信任吃掉。</p>
+        </div>
+        <p class="src">README 同上。论文 §1–§2：<a href="https://arxiv.org/html/2608.09290v2">arxiv.org/html/2608.09290v2</a></p>
+      </section>
+
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>03 · 流水线</b><span>不确定的只有被夹住的那一段</span></div>
+          <h1>模型进场之前，范围已经定了</h1>
+        </div>
+        <div>
+          <ol class="pipe">
+            <li class="det"><strong>Git diff</strong><span>工作区 / 提交 / 区间</span></li>
+            <li class="det"><strong>五重门</strong><span>二进制、排除、扩展名、测试路径</span></li>
+            <li class="det"><strong>规则</strong><span>四层链，先匹配先生效</span></li>
+            <li class="llm"><strong>子 Agent</strong><span>按文件隔离的语义审查</span></li>
+            <li class="mix"><strong>行号</strong><span>片段回贴，失败才重定位</span></li>
+            <li class="mix"><strong>反射</strong><span>只看 diff，只做证伪</span></li>
+            <li class="det"><strong>输出</strong><span>文本或 JSON</span></li>
+          </ol>
+          <div class="legend">
+            <span><i class="sw det"></i>确定性代码</span>
+            <span><i class="sw llm"></i>LLM 推理</span>
+            <span><i class="sw mix"></i>模型在场，但边界由程序规定</span>
+          </div>
+          <div class="forbid">
+            <b>不交给模型决定</b>
+            <div class="chips">
+              <span class="chip">这个文件看不看</span>
+              <span class="chip">用哪一条规则</span>
+              <span class="chip">行号直接采信口报</span>
+              <span class="chip">被 diff 证伪的评论留不留</span>
+              <span class="chip">核查者能不能新写一条</span>
+            </div>
+          </div>
+          <p class="note">README 还写过把相关文件捆成一个审查单元。论文图 2 和架构文档写的是：每个通过过滤的文件一个子 Agent。本页按论文和架构文档。</p>
+        </div>
+        <p class="src">论文图 2、§3.1。<a href="https://arxiv.org/html/2608.09290v2">2608.09290v2</a> · 架构 <a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/architecture.md">architecture.md</a> · 过滤实现 <a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/preview.go">preview.go</a></p>
+      </section>
+
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>04 · 职责</b><span>谁做什么，比提示词写什么更先决定质量</span></div>
+          <h1>确定性步骤和语义推理拆开</h1>
+        </div>
+        <div>
+          <table>
+            <thead>
+              <tr><th>环节</th><th>谁负责</th><th>为什么不能混</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>文件筛选、噪声目录剔除、五重门、超大 diff 拦截</td>
+                <td class="who">确定性工程</td>
+                <td>漏看和误放都不能靠模型自觉。同一份 diff，文件集应当可复现。</td>
+              </tr>
+              <tr>
+                <td>规则匹配：临时 &gt; 项目 &gt; 用户全局 &gt; 内置</td>
+                <td class="who">确定性工程</td>
+                <td>标准先于推理。Replace 或 Merge 也是配置，不是模型现场挑选。</td>
+              </tr>
+              <tr>
+                <td>按文件分发、上下文隔离、有界并发</td>
+                <td class="who">确定性调度</td>
+                <td>大变更集不再挤进同一个上下文里互相稀释。默认并发 8。</td>
+              </tr>
+              <tr>
+                <td>读上下文、追调用、判断是不是缺陷</td>
+                <td class="who llm">LLM 子 Agent</td>
+                <td>语义只有模型能做。工具集是审查专用的，输出有上限。</td>
+              </tr>
+              <tr>
+                <td>评论行号</td>
+                <td class="who mix">确定性匹配为主</td>
+                <td>用 existing_code 对 diff / 全文做匹配。失败才走 RE_LOCATION_TASK，不把口报行号直接落盘。</td>
+              </tr>
+              <tr>
+                <td>评论是否被 diff 事实打脸</td>
+                <td class="who llm">独立 Reflector</td>
+                <td>只判断事实真假，不判断价值高低。只能删，不能新写。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="src">论文 §3.2–§3.4；架构文档「五重门」「评论处理流水线」「并发默认 8」。链接同上。</p>
+      </section>
+
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>05 · 确定性前半段</b><span>现场可以跑，这一步不花 token</span></div>
+          <h1>文件集在模型开口之前就算完</h1>
+        </div>
+        <div class="two">
+          <div>
+            <ol class="gates">
+              <li><span class="i">1</span><span>二进制，直接丢掉。</span></li>
+              <li><span class="i">2</span><span>命中用户 exclude。</span></li>
+              <li><span class="i">3</span><span>若配置了 include 且命中，立刻保留，跳过后面两门。</span></li>
+              <li><span class="i">4</span><span>扩展名不在白名单。</span></li>
+              <li><span class="i">5</span><span>内置测试路径，如 <span class="num">*_test.go</span>、<span class="num">*.test.ts</span>、<span class="num">__tests__/</span>。</span></li>
+            </ol>
+            <p class="note">五重门之外还有两道硬停止：<span class="num">vendor/</span>、<span class="num">node_modules/</span>、<span class="num">target/</span> 在 diff 层就被剔除；单文件 diff 超过 <span class="num">MAX_TOKENS</span> 的 80% 不派发。已删除文件在预览里另标 <span class="num">deleted</span>。规则文档本身也写明偏向精度而不是召回。</p>
+          </div>
+          <div>
+            <div class="term">
+              <div class="cmd">$ ocr review --preview</div>
+              <div class="dim"># 不调用 LLM。下面是输出骨架，计数请以现场为准。</div>
+              <div style="margin-top:8px">Preview: &lt;n&gt; file(s) changed</div>
+              <div class="g">Will review (&lt;n&gt;):</div>
+              <div>&nbsp;&nbsp;[M]  internal/agent/preview.go</div>
+              <div class="r">Excluded from review (&lt;n&gt;):</div>
+              <div>&nbsp;&nbsp;[M]  …/preview_test.go  (default_path)</div>
+              <div>&nbsp;&nbsp;[B]  …/logo.png         (binary)</div>
+              <div>&nbsp;&nbsp;[M]  …/notes.lock       (unsupported_ext)</div>
+              <div>&nbsp;&nbsp;[D]  …/old.go           (deleted)</div>
+            </div>
+            <p class="note">排除原因字符串来自代码：<span class="num">binary</span>、<span class="num">user_exclude</span>、<span class="num">unsupported_ext</span>、<span class="num">default_path</span>、<span class="num">deleted</span>。这一屏就是「确定性工程在干活」。</p>
+          </div>
+        </div>
+        <p class="src">门序与 <span class="num">--preview</span>：<a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/architecture.md">architecture.md</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/preview.go">preview.go</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/model/preview.go">model/preview.go</a> · 输出格式 <a href="https://github.com/alibaba/open-code-review/blob/main/cmd/opencodereview/output.go">output.go</a></p>
+      </section>
+
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>06 · 反思</b><span>全场机制重点。它不评好坏，只问事实能不能被打脸</span></div>
+          <h1>核查者看到的更少，所以圆不了场</h1>
+        </div>
+        <div>
+          <div class="bound">
+            <div class="panel">
+              <span class="tag llm">生成层 · 子 Agent</span>
+              <h2>可以探索</h2>
+              <p>看 diff，也能用工具读文件、搜索调用、看其他变更文件。它的评论可能依赖 diff 里看不见的上下文。</p>
+            </div>
+            <div class="arrow">→</div>
+            <div class="panel">
+              <span class="tag mix">核查层 · REVIEW_FILTER</span>
+              <h2>只剩 diff</h2>
+              <p>输入是该文件的 diff 和评论列表。看不到工具轨迹，也看不到仓库探索。同一模型，信息边界不对称。</p>
+            </div>
+          </div>
+          <ol class="steps">
+            <li><b>证伪，不证实。</b> diff 里有直接反证，才标为错误。仅仅「无法从 diff 证实」，必须放行——子 Agent 可能见过你没见过的上下文。</li>
+            <li><b>两步。</b> 先做事实否决；diff 里可见的事实站得住之后，再看它有没有把正常代码说成缺陷，或把行为说反。仍然只有 diff 能直接证明写错了才删。</li>
+            <li><b>只能删。</b> 不改写、不新增。解析失败则全部保留（fail open）。</li>
+          </ol>
+        </div>
+        <p class="src">提示词原文：<a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/prompts/review_filter_task_system.md">review_filter_task_system.md</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/prompts/review_filter_task_user.md">review_filter_task_user.md</a> · 论文 §3.4</p>
+      </section>
+
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>07 · 归因边界</b><span>精度区间可以说，开关实验的百分点不能编</span></div>
+          <h1>表 3 比的是整套系统</h1>
+        </div>
+        <div>
+          <div class="axis-wrap">
+            <div class="axis-name">Precision · OpenCodeReview 六档，25.20% – 37.80%。论文概括为 25–38%。</div>
+            <div class="axis">
+              <div class="band ocr" style="left:50.4%;width:25.2%"></div>
+            </div>
+            <div class="ticks"><span>0</span><span>25.20</span><span>37.80</span><span>50%</span></div>
+          </div>
+          <div class="axis-wrap">
+            <div class="axis-name">Precision · Claude Code 五档，7.23% – 15.93%。Codex 的 GPT-5.5 是 27.82%，不在这条带里。</div>
+            <div class="axis">
+              <div class="band cc" style="left:14.46%;width:17.4%"></div>
+            </div>
+            <div class="ticks"><span>0</span><span>7.23</span><span>15.93</span><span>50%</span></div>
+          </div>
+          <div class="call warn">
+            <strong>§4.4 的原话方向：</strong>
+            OCR 停在高精度、中等召回这一区，作者写成独立反思的直接后果——只删除被 diff 反驳的评论，引用了 diff 之外上下文的评论会留下。关掉 <span class="num">REVIEW_FILTER_TASK</span> 前后差几个点，论文没有给开关实验。不能把 7% 到 25–38% 说成「反射器单独测出来的增量」。
+          </div>
+        </div>
+        <p class="src">论文 §4.2(2)、§4.4、§5(2)。<a href="https://arxiv.org/html/2608.09290v2">arxiv.org/html/2608.09290v2</a></p>
+      </section>
+
+      <section class="slide" data-section="数据">
+        <div>
+          <div class="kicker"><b>08 · 同模型</b><span>Claude-4.6-Opus · AACR-Bench 表 3</span></div>
+          <h1>同一模型，两套 Harness</h1>
+          <p class="sub">SEM-F1 的 2.17× 来自精度抬升。召回这边，OCR 更低。</p>
+        </div>
+        <div class="two" style="grid-template-columns:1.25fr 0.75fr">
+          <div class="bars">
+            <div>
+              <div class="metric-label"><span>SEM-F1 · 刻度 0–30%</span><span>论文给出 2.17×</span></div>
+              <div class="pair">
+                <div class="brow"><span>OCR</span><div class="track"><div class="fill ocr" style="width:83.67%"></div></div><span class="v">25.10%</span></div>
+                <div class="brow"><span>Claude Code</span><div class="track"><div class="fill cc" style="width:38.57%"></div></div><span class="v">11.57%</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="metric-label"><span>Precision · 刻度 0–40%</span><span>33.90 ÷ 7.23 ≈ 4.7</span></div>
+              <div class="pair">
+                <div class="brow"><span>OCR</span><div class="track"><div class="fill ocr" style="width:84.75%"></div></div><span class="v">33.90%</span></div>
+                <div class="brow"><span>Claude Code</span><div class="track"><div class="fill cc" style="width:18.08%"></div></div><span class="v">7.23%</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="metric-label"><span>Recall · 刻度 0–36%</span><span>OCR 匹配 301/1505</span></div>
+              <div class="pair">
+                <div class="brow"><span>OCR</span><div class="track"><div class="fill ocr" style="width:55.56%"></div></div><span class="v">20.00%</span></div>
+                <div class="brow"><span>Claude Code</span><div class="track"><div class="fill cc" style="width:80.28%"></div></div><span class="v">28.90%</span></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="panel">
+              <span class="tag det">同一次运行的成本</span>
+              <h2 style="font-size:22px">Token 与时间</h2>
+              <p>平均每条样本：</p>
+              <ol>
+                <li>OCR：385K，1 分 23 秒</li>
+                <li>Claude Code：5,664K，13 分 06 秒</li>
+                <li>Token 倍数：5,664 ÷ 385 ≈ 14.7。论文对全部同模型对照的概括是 5–15×。</li>
+                <li>生成量：301/889 对 435/5,980。</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+        <p class="src">表 3。评判是语义匹配，裁判 Qwen3-235B-A22B-Instruct，每配置 5 次取均值，所以 Match/Gen 与百分比可能差在四舍五入。正文另写 Claude Code 生成 4,580 条，与表中 5,980 不一致，本页以表 3 为准。<a href="https://arxiv.org/html/2608.09290v2">表 3</a> · 基准定义 <a href="https://arxiv.org/abs/2601.19494">AACR-Bench 2601.19494</a></p>
+      </section>
+
+      <section class="slide" data-section="数据">
+        <div>
+          <div class="kicker"><b>09 · 跨模型</b><span>缝在系统上，不在某一款模型上</span></div>
+          <h1>最弱的 OCR，仍高于最强的 Claude Code</h1>
+        </div>
+        <div>
+          <div class="call" style="margin-bottom:12px">
+            SEM-F1：OCR 17.90%–25.10%，Claude Code 10.93%–14.13%。论文点名最弱配置 Deepseek-V4-Pro 为 17.90%，高于 Claude Code 最强的 14.13%（Claude-4.8-Opus）。表 3 里 OCR 的 Claude-4.8-Opus 也是 17.90%，与 Deepseek 并列。
+          </div>
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>模型</th><th>系统</th><th>SEM-F1</th><th>Prec.</th><th>Recall</th><th>Match/Gen</th><th>Token</th><th>时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="hi"><td>Claude-4.6-Opus</td><td>OCR</td><td class="num">25.10%</td><td class="num">33.90%</td><td class="num">20.00%</td><td class="num">301/889</td><td class="num">385K</td><td class="num">1m23s</td></tr>
+              <tr><td></td><td>Claude Code</td><td class="num">11.57%</td><td class="num">7.23%</td><td class="num">28.90%</td><td class="num">435/5980</td><td class="num">5,664K</td><td class="num">13m06s</td></tr>
+              <tr class="hi"><td>Qwen3.7-Max</td><td>OCR</td><td class="num">21.20%</td><td class="num">25.20%</td><td class="num">18.30%</td><td class="num">276/1096</td><td class="num">625K</td><td class="num">4m41s</td></tr>
+              <tr><td></td><td>Claude Code</td><td class="num">12.17%</td><td class="num">8.23%</td><td class="num">23.37%</td><td class="num">351/4260</td><td class="num">5,153K</td><td class="num">8m06s</td></tr>
+              <tr class="hi"><td>GPT-5.5</td><td>OCR</td><td class="num">21.00%</td><td class="num">32.10%</td><td class="num">15.50%</td><td class="num">234/728</td><td class="num">422K</td><td class="num">2m51s</td></tr>
+              <tr><td></td><td>Codex</td><td class="num">8.36%</td><td class="num">27.82%</td><td class="num">4.92%</td><td class="num">74/266</td><td class="num">525K</td><td class="num">2m58s</td></tr>
+              <tr class="hi"><td>Claude-4.8-Opus</td><td>OCR</td><td class="num">17.90%</td><td class="num">37.80%</td><td class="num">11.70%</td><td class="num">176/465</td><td class="num">352K</td><td class="num">1m06s</td></tr>
+              <tr class="lo"><td></td><td>Claude Code</td><td class="num">14.13%</td><td class="num">15.93%</td><td class="num">12.70%</td><td class="num">191/1200</td><td class="num">2,062K</td><td class="num">5m38s</td></tr>
+              <tr class="hi"><td>Deepseek-V4-Pro</td><td>OCR</td><td class="num">17.90%</td><td class="num">30.60%</td><td class="num">12.70%</td><td class="num">191/624</td><td class="num">394K</td><td class="num">6m28s</td></tr>
+              <tr><td></td><td>Claude Code</td><td class="num">10.93%</td><td class="num">8.27%</td><td class="num">16.13%</td><td class="num">243/2945</td><td class="num">5,450K</td><td class="num">14m24s</td></tr>
+              <tr class="hi"><td>GLM-5.1</td><td>OCR</td><td class="num">20.40%</td><td class="num">28.90%</td><td class="num">15.70%</td><td class="num">237/820</td><td class="num">743K</td><td class="num">4m11s</td></tr>
+              <tr><td></td><td>Claude Code</td><td class="num">11.93%</td><td class="num">8.37%</td><td class="num">20.80%</td><td class="num">313/3742</td><td class="num">4,038K</td><td class="num">14m10s</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="src">整表抄自论文表 3。Codex v0.140.0 只测了 GPT-5.5：精度 27.82% 并不低，召回 4.92%，SEM-F1 8.36%。对 Codex，OCR 的优势主要在 F1 和召回，不是「所有对手精度都只有 7%」。绿底是 OCR，红底是 Claude Code 的最高 SEM-F1。</p>
+      </section>
+
+      <section class="slide" data-section="数据">
+        <div>
+          <div class="kicker"><b>10 · 取舍</b><span>少而准是目标函数，不是没测到召回</span></div>
+          <h1>最优配置对上了专家标注的五分之一</h1>
+        </div>
+        <div class="two">
+          <div class="panel">
+            <span class="tag mix">Claude-4.6-Opus · OCR</span>
+            <h2 class="num" style="font-size:42px;margin:8px 0">20.00%</h2>
+            <p>召回 301 / 1,505。其余 1,204 条专家标注，这次没有被语义匹配上。六档 OCR 的召回落在 11.70%–20.00%。生成量 465–1,096 条。</p>
+            <p style="margin-top:12px">Claude Code 把召回做到 28.90% 时，生成了 5,980 条，精度 7.23%。多出来的覆盖，是用噪声换的。</p>
+          </div>
+          <div>
+            <div class="call" style="margin-bottom:12px">
+              <strong>适合。</strong>
+              人会逐条读评论的日常 PR 和 CI。假警报比漏报更伤信任。规则文档的开头就是 favor precision over recall。需要同一 diff 得到稳定文件集时，前半段的确定性也有用。
+            </div>
+            <div class="call warn">
+              <strong>不适合当穷举。</strong>
+              安全审计、合规扫雷若以「专家会标出的问题尽量不漏」为第一目标，20% 召回不够。这条流水线没有把最大召回设成目标。
+            </div>
+            <p class="note">构念限制：SEM-F1 不衡量可操作性、清晰度和严重程度。一条有用但没对上任何标注的评论，会被记成假阳性。所以这里的精度是「与专家标注重合」的比例。</p>
+          </div>
+        </div>
+        <p class="src">召回与生成量：表 3、§4.2、§4.4。构念效度：§6。规则意图示例：<a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/rules/rule_docs/go.md">rule_docs/go.md</a></p>
+      </section>
+
+      <section class="slide" data-section="原则">
+        <div>
+          <div class="kicker"><b>11 · 可迁移</b><span>带走约束，不带走安装步骤</span></div>
+          <h1>任何要可追责的 Agent，都可以问这三句</h1>
+        </div>
+        <div class="principles">
+          <article class="principle">
+            <div class="n">01</div>
+            <div>
+              <h2>能由程序保证的，不进提示词</h2>
+              <p>文件进不进、规则用哪条、行号落在哪一行。这些步骤错了无法靠「再想一想」补救，就不要交给采样。</p>
+            </div>
+          </article>
+          <article class="principle">
+            <div class="n">02</div>
+            <div>
+              <h2>生成层后面，要有一层自己不能加戏的核查</h2>
+              <p>核查者只能删除被证据打脸的输出。不能改写成新结论。解析失败就原样保留，避免核查层自己制造一批评论。</p>
+            </div>
+          </article>
+          <article class="principle">
+            <div class="n">03</div>
+            <div>
+              <h2>核查层与生成层之间，要有信息边界</h2>
+              <p>让核查者看到更少，而不是再看一遍同一条推理轨迹。OCR 的反射器与子 Agent 可以用同一个模型；挡住自我合理化的是它看不见探索过程。</p>
+            </div>
+          </article>
+        </div>
+        <p class="src">三条分别对应论文的 Rule-Guided Dispatch、filter-only 设计、asymmetric information boundary。§3 与 §7：系统对审查质量的贡献大于模型选择。<a href="https://arxiv.org/html/2608.09290v2#S7">结论</a></p>
+      </section>
+
+      <section class="slide" data-section="收束">
+        <div>
+          <div class="kicker"><b>12 · 核对</b><span>本页没有新数字</span></div>
+          <h1>系统设计对质量的贡献，大于换一个模型</h1>
+          <p class="sub">同一模型上 SEM-F1 2.17×、精度约 4.7×、召回主动变低、token 在同模型对照里大约少一个数量级。Cursor 的「越找越多」是现象；能量化的是 Claude Code 和 Codex。</p>
+        </div>
+        <ul class="links">
+          <li>论文（表 3、§3、§4、§6、§7）<br><a href="https://arxiv.org/abs/2608.09290">https://arxiv.org/abs/2608.09290</a><br><a href="https://arxiv.org/html/2608.09290v2">https://arxiv.org/html/2608.09290v2</a><br><a href="https://arxiv.org/pdf/2608.09290">https://arxiv.org/pdf/2608.09290</a></li>
+          <li>AACR-Bench 论文与评测仓库<br><a href="https://arxiv.org/abs/2601.19494">https://arxiv.org/abs/2601.19494</a><br><a href="https://github.com/alibaba/aacr-bench">https://github.com/alibaba/aacr-bench</a></li>
+          <li>架构、过滤、反射提示词<br><a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/architecture.md">architecture.md</a><br><a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/preview.go">preview.go</a><br><a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/prompts/review_filter_task_user.md">review_filter_task_user.md</a></li>
+          <li>现象描述（无 Cursor 量化）<br><a href="https://github.com/alibaba/open-code-review/blob/main/README.zh-CN.md">README.zh-CN.md</a><br>版本：OCR v1.3.1 · Claude Code v2.1.169 · Codex v0.140.0<br>200 PR · 50 仓库 · 10 种语言 · 1,505 条标注 · 80+ 工程师三轮交叉验证</li>
+        </ul>
+        <p class="src">提问。若要现场演示确定性前半段：在仓库里执行 <span class="num">ocr review --preview</span>，这一步不调用模型。</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+<div class="chrome">
+  <div class="bar" id="bar"></div>
+  <span id="pos">01 / 13</span>
+  <span id="sec">开场</span>
+  <span>? 帮助 · F 全屏</span>
+</div>
+<div class="help" id="help">
+  <div class="card">
+    <h2>翻页</h2>
+    <p>← → 、空格、PageUp / PageDown。Home / End 到两端。</p>
+    <p>点击画面左缘回退，右缘前进。链接点击不会翻页。</p>
+    <p>F 全屏。? 或 Esc 关闭这张说明。</p>
+  </div>
+</div>
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var stage = document.getElementById("stage");
+  var frame = document.getElementById("frame");
+  var bar = document.getElementById("bar");
+  var pos = document.getElementById("pos");
+  var sec = document.getElementById("sec");
+  var help = document.getElementById("help");
+  var i = 0;
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    frame.style.width = (1280 * s) + "px";
+    frame.style.height = (720 * s) + "px";
+    stage.style.transform = "scale(" + s + ")";
+  }
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (el, idx) { el.classList.toggle("on", idx === i); });
+    var label = String(i + 1).padStart(2, "0") + " / " + String(slides.length).padStart(2, "0");
+    pos.textContent = label;
+    sec.textContent = slides[i].getAttribute("data-section") || "";
+    bar.style.width = ((i + 1) / slides.length * 100) + "%";
+    if (location.hash !== "#" + (i + 1)) {
+      history.replaceState(null, "", "#" + (i + 1));
+    }
+  }
+
+  function fromHash() {
+    var n = parseInt(location.hash.replace("#", ""), 10);
+    if (n >= 1 && n <= slides.length) show(n - 1);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "?" || (e.key === "h" && e.shiftKey)) {
+      help.classList.toggle("on");
+      return;
+    }
+    if (e.key === "Escape") { help.classList.remove("on"); return; }
+    if (help.classList.contains("on")) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+      e.preventDefault();
+      show(i + 1);
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") {
+      e.preventDefault();
+      show(i - 1);
+    } else if (e.key === "Home") {
+      show(0);
+    } else if (e.key === "End") {
+      show(slides.length - 1);
+    } else if (e.key === "f" || e.key === "F") {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  stage.addEventListener("click", function (e) {
+    if (e.target.closest("a, button")) return;
+    var rect = frame.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    if (x < rect.width * 0.18) show(i - 1);
+    else show(i + 1);
+  });
+
+  help.addEventListener("click", function () { help.classList.remove("on"); });
+  window.addEventListener("resize", fit);
+  window.addEventListener("hashchange", fromHash);
+  fit();
+  fromHash();
+  if (!location.hash) show(0);
+})();
+</script>
+</body>
+</html>
