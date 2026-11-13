@@ -2,7 +2,7 @@
 <html lang="zh-Hans">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
 <title>确定性工程如何驯服不确定的 Agent · Open Code Review</title>
 <style>
   :root {
@@ -26,16 +26,24 @@
       "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    overflow: hidden; overscroll-behavior: none;
+  }
   body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
   a { color: var(--copper); text-decoration-thickness: 1px; text-underline-offset: 2px; }
   a:hover { color: #f0c48a; }
 
-  .viewport { height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .frame { position: relative; }
+  .viewport {
+    height: 100%; height: 100dvh; width: 100%;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    touch-action: none;
+  }
+  .frame { position: relative; max-width: 100%; touch-action: none; }
   .stage {
     width: 1280px; height: 720px; position: absolute; left: 0; top: 0;
     transform-origin: top left; background: var(--slide); box-shadow: var(--shadow); overflow: hidden;
+    cursor: pointer; touch-action: none;
   }
   .slide {
     display: none; position: absolute; inset: 0; padding: 40px 52px 72px;
@@ -209,7 +217,13 @@
   .band { position: absolute; top: 5px; height: 22px; border-radius: 4px; }
   .band.ocr { background: #9cbe86; }
   .band.cc { background: #e0a15c; }
-  .ticks { display: flex; justify-content: space-between; color: var(--dim); font-family: var(--mono); font-size: 11px; margin-top: 3px; }
+  .ticks {
+    position: relative; height: 16px; margin-top: 3px;
+    color: var(--dim); font-family: var(--mono); font-size: 11px;
+  }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span:first-child { transform: none; left: 0 !important; }
+  .ticks span:last-child { transform: none; left: auto !important; right: 0; }
 
   .principles { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .principle {
@@ -288,7 +302,7 @@
   @media print {
     .viewport { display: block; height: auto; overflow: visible; }
     .frame { width: auto !important; height: auto !important; }
-    .stage { position: static; transform: none !important; width: auto; height: auto; box-shadow: none; }
+    .stage { position: static; transform: none !important; zoom: 1 !important; width: auto; height: auto; box-shadow: none; }
     .slide {
       display: grid !important; position: relative; width: 1280px; height: 720px;
       break-after: page; page-break-after: always;
@@ -307,7 +321,7 @@
         <div>
           <div class="kicker"><b>技术分享 · 语音服务研发</b><span>系统设计如何驯服 Agent 不确定性 · 约 60 分钟</span></div>
           <h1 class="hero-title">确定性工程如何驯服不确定的 Agent</h1>
-          <p class="sub">Open Code Review 架构解析。同一模型，换一套 Harness：主指标翻倍，精度更高。这是系统对照，不是模型榜。</p>
+          <p class="sub">Open Code Review 架构解析。同一模型，换一套 Harness：SEM-F1 约 2.2×，精度更高、召回更低。这是系统对照，不是模型榜。</p>
         </div>
         <div class="hero-grid">
           <div class="stat-stack">
@@ -317,7 +331,7 @@
               <div class="mult">2.17×</div>
             </div>
             <div class="stat">
-              <div class="name">Precision<br>由表内相除</div>
+              <div class="name">Precision<br>裁判五次均值</div>
               <div class="path num">7.23% → 33.90%</div>
               <div class="mult">≈4.7×</div>
             </div>
@@ -328,7 +342,7 @@
             </div>
           </div>
           <div>
-            <p class="sub" style="margin-top:0">后端 Claude-4.6-Opus。OCR v1.3.1 对 Claude Code v2.1.169。论文正文写的倍数是 SEM-F1 的 2.17×；4.7× 是精度相除。</p>
+            <p class="sub" style="margin-top:0">后端 Claude-4.6-Opus。OCR v1.3.1 对 Claude Code v2.1.169。2.17× / 4.7× 来自表 3 打印值。SEM-F1、精度、召回都是语义裁判复跑五次的均值，不是审查系统复跑。正文 4,580 与表 5,980 冲突时以表为准。后文 token 与时间是每条 PR 的平均。</p>
             <div class="meta-row">
               <span class="pill">现象与 Demo ≈15′</span>
               <span class="pill">架构实现 ≈30′</span>
@@ -343,7 +357,7 @@
       <!-- 1 agenda -->
       <section class="slide" data-section="开场">
         <div>
-          <div class="kicker"><b>00 · 议程</b><span>约 28 页 · 一小时</span></div>
+          <div class="kicker"><b>00 · 议程</b><span>27 页 · 一小时</span></div>
           <h1>今天讲什么、不讲什么</h1>
         </div>
         <div class="agenda">
@@ -377,11 +391,11 @@
             </div>
             <div class="panel">
               <span class="tag det">Open Code Review</span>
-              <h2>再问，文件集不动</h2>
-              <p>哪些文件进入审查，由过滤器决定，不由模型当场发挥。评论若被 diff 事实直接打脸，会被拿掉；多问一轮不会因此换一套审查范围。</p>
+              <h2>同一 diff 再跑，文件集不动</h2>
+              <p>哪些文件进入审查，由过滤器决定，不由模型当场发挥。评论若被 diff 事实直接打脸，会被拿掉；同一份 diff 再跑不会换一套审查范围（工作区若变了，diff 本身会变）。</p>
               <ol>
                 <li>进不进审查，程序先算完。</li>
-                <li>行号靠代码片段回贴，不靠模型口报。</li>
+                <li>行号由 existing_code 片段匹配算出，模型不报行号。</li>
                 <li>核查者只能删被证伪的评论，不能另起一条。</li>
               </ol>
             </div>
@@ -400,7 +414,7 @@
         <div class="shot-wrap">
           <img src="cursor_ocr_chatlog.png" alt="Cursor 中 OCR Review 审查 chat_log 的截图：检出 botId 短变量遮蔽导致日志打空" />
         </div>
-        <p class="src">截图文件：同目录 <span class="num">talks/cursor_ocr_chatlog.png</span>。范围：workspace · <span class="num">get_chat_log.go (+4/-4)</span> · <span class="num">sync_chat_log.go (+10/-5)</span>。问题：High / correctness / lines 411–420。</p>
+          <p class="src">截图文件：同目录 <span class="num">talks/cursor_ocr_chatlog.png</span>。范围：workspace · <span class="num">get_chat_log.go (+4/-4)</span> · <span class="num">sync_chat_log.go (+10/-5)</span>。问题：High / lines 411–420。截图徽章写 correctness；现行解析会收成 other。</p>
       </section>
 
       <!-- 4 screenshot anatomy -->
@@ -438,7 +452,7 @@ botId, ok = ...
                 <li>审查范围写死在报告头，不随追问漂移</li>
               </ul>
             </div>
-            <p class="note">下一节开始拆「为什么这类结果更稳」——从结构性弱点到流水线实现。</p>
+            <p class="note">截图徽章是 correctness。现行枚举没有这一项，模型若填它，解析会收成 other。下一节拆为什么这类结果更稳。</p>
           </div>
         </div>
         <p class="src">截图同源。OCR 行号由 <span class="num">existing_code</span> 匹配产生，见工具文档「锚定算法」。<a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/tools.md">tools.md</a></p>
@@ -500,7 +514,7 @@ botId, ok = ...
             <div class="chips">
               <span class="chip">这个文件看不看</span>
               <span class="chip">用哪一条规则</span>
-              <span class="chip">行号直接采信口报</span>
+              <span class="chip">行号交给模型填写</span>
               <span class="chip">被 diff 证伪的评论留不留</span>
               <span class="chip">核查者能不能新写一条</span>
             </div>
@@ -543,7 +557,7 @@ botId, ok = ...
               <tr>
                 <td>评论行号</td>
                 <td class="who mix">确定性匹配为主</td>
-                <td>用 existing_code 匹配；失败才 RE_LOCATION_TASK。</td>
+                <td>模型只交 existing_code；程序匹配出行号，失败才 RE_LOCATION_TASK。</td>
               </tr>
               <tr>
                 <td>评论是否被 diff 事实打脸</td>
@@ -566,12 +580,12 @@ botId, ok = ...
           <div>
             <ol class="gates">
               <li><span class="i">1</span><span>二进制 → <span class="num">binary</span></span></li>
-              <li><span class="i">2</span><span>命中用户 exclude → <span class="num">user_exclude</span></span></li>
+              <li><span class="i">2</span><span>命中当前层 exclude → <span class="num">user_exclude</span></span></li>
               <li><span class="i">3</span><span>配置了 include 且命中 → 立刻保留，跳过后两门</span></li>
               <li><span class="i">4</span><span>扩展名不在白名单 → <span class="num">unsupported_ext</span></span></li>
-              <li><span class="i">5</span><span>内置测试路径 → <span class="num">default_path</span>（如 <span class="num">*_test.go</span>、<span class="num">*.test.ts</span>）</span></li>
+              <li><span class="i">5</span><span>内置排除 → <span class="num">default_path</span>（测试、夹具、快照、<span class="num">*.pb.go</span>）</span></li>
             </ol>
-            <p class="note">另两道硬停止：<span class="num">vendor/</span>、<span class="num">node_modules/</span>、<span class="num">target/</span> 在 diff 层剔除；单文件 diff &gt; <span class="num">MAX_TOKENS</span> 的 80% 不派发。删除文件预览标 <span class="num">deleted</span>。</p>
+            <p class="note">include 未命中不排除，不是白名单。exclude/include 只取最高一层。<span class="num">vendor/</span>、<span class="num">node_modules/</span>、<span class="num">target/</span> 等在 diff 层剔除。超大 diff 与删除文件不派发，预览里删除标 <span class="num">deleted</span>。</p>
           </div>
           <div>
             <div class="term">
@@ -609,7 +623,7 @@ botId, ok = ...
                 <tr><td class="num">4</td><td>内置系统</td><td>嵌入的 <span class="num">system_rules.json</span></td></tr>
               </tbody>
             </table>
-            <p class="note" style="margin-top:12px">路径用 glob，声明顺序求值，先匹配先生效。用户规则可 Replace（默认）或 Merge 内置规则。解析出的正文注入 prompt 的 <span class="num">{{system_rule}}</span>。</p>
+            <p class="note" style="margin-top:12px">规则正文按层先匹配，本层未命中才落到下一层；层内按声明顺序。命中后默认替换内置规则，<span class="num">merge_system_rule</span> 才拼接。正文注入 <span class="num">{{system_rule}}</span>。include/exclude 不走这条链。</p>
           </div>
           <div>
             <div class="term">
@@ -636,9 +650,9 @@ botId, ok = ...
         <div class="two">
           <ul class="flow-v">
             <li class="det"><strong>分发</strong>每个文件独立 goroutine + 独立消息缓冲。受 <span class="num">--concurrency</span>（默认 8）约束。</li>
-            <li class="llm"><strong>Plan（可选）</strong>变更行数 ≥ <span class="num">PlanModeLineThreshold</span>（50）才跑。单次 LLM，不发 Tools 字段；只读工具名以纯文本告知。</li>
+            <li class="llm"><strong>Plan（可选）</strong>插入+删除行数 ≥ <span class="num">PlanModeLineThreshold</span>（50）才跑。单次 LLM，不发 Tools 字段；只读工具名以纯文本告知。</li>
             <li class="llm"><strong>Main 循环</strong>ReAct：思考 → 调工具 → 观察。最多 <span class="num">MAX_TOOL_REQUEST_TIMES</span>（默认 30）。</li>
-            <li class="mix"><strong>退出</strong>task_done / 轮次耗尽 / 连续 3 空轮 / 取消 / 压缩无法压回阈值。</li>
+            <li class="mix"><strong>退出</strong>task_done / 轮次耗尽 / 连续 3 次调用无结果 / 取消 / 压缩无法压回阈值。</li>
           </ul>
           <div>
             <div class="panel">
@@ -646,7 +660,7 @@ botId, ok = ...
               <h2 style="font-size:20px">连贯 vs 效率</h2>
               <p>整 PR 塞进一个 Agent：上下文膨胀、信号稀释。切太碎（按 hunk）：看不到变更整体。文件级是论文选定的折中；跨文件依赖用工具按需取，不共享巨型上下文。</p>
             </div>
-            <p class="note">截图里两个 chat_log 文件各自审查，报告头汇总范围。主循环里已收集的 <span class="num">code_comment</span> 才会进入后处理。</p>
+            <p class="note">「3 次」只计发出了工具调用、但没有有效结果的轮次。一次调用都没解析出来时，只消耗 30 次上限。主循环里已收集的 <span class="num">code_comment</span> 才会进入后处理。</p>
           </div>
         </div>
         <p class="src">architecture.md「per-file 子任务」· 论文 §3.3 Grounded File Review</p>
@@ -660,16 +674,16 @@ botId, ok = ...
         </div>
         <div>
           <div class="toolgrid">
-            <div class="tool"><div class="nm">file_read</div><p>读变更后文件片段（最多约 500 行）。</p><div class="ph">仅 Main</div></div>
-            <div class="tool"><div class="nm">file_find</div><p>按文件名关键字定位。</p><div class="ph">Plan + Main</div></div>
-            <div class="tool"><div class="nm">code_search</div><p>全仓 grep；有匹配上限与超时。</p><div class="ph">Plan + Main</div></div>
-            <div class="tool"><div class="nm">file_read_diff</div><p>读另一变更文件的 diff，确认跨文件关切。</p><div class="ph">Plan + Main</div></div>
+            <div class="tool"><div class="nm">file_read</div><p>读变更后文件片段（最多 500 行）。</p><div class="ph">仅 Main</div></div>
+            <div class="tool"><div class="nm">file_find</div><p>按文件名关键字定位。</p><div class="ph">Main 可调 · Plan 只读名</div></div>
+            <div class="tool"><div class="nm">code_search</div><p>全仓 grep；有匹配上限与超时。</p><div class="ph">Main 可调 · Plan 只读名</div></div>
+            <div class="tool"><div class="nm">file_read_diff</div><p>读另一变更文件的 diff，确认跨文件关切。</p><div class="ph">Main 可调 · Plan 只读名</div></div>
             <div class="tool"><div class="nm">code_comment</div><p>提交评论：content + existing_code + 可选 suggestion。</p><div class="ph">仅 Main</div></div>
             <div class="tool"><div class="nm">task_done</div><p>结束循环。Plan 阶段故意不可用。</p><div class="ph">仅 Main</div></div>
           </div>
           <div class="call warn" style="margin-top:12px">
-            <strong>硬约束：</strong>
-            上下文工具是只读，不是评论目标。在其他文件里发现的问题，默认不能写成评论——只有当前文件 diff 可观测时才允许落评论。这防止「逛着逛着把半个仓库批一通」。
+            <strong>硬的是 path 与工具面：</strong>
+            Plan 不发 Tools 字段；<span class="num">file_find</span>、<span class="num">code_search</span>、<span class="num">file_read_diff</span> 只以纯文本出现。Main 才真正可调。<span class="num">code_comment</span> 的 path 会被改写成当前文件，评论挂不到别的文件上。「只评当前 diff 里看得到的问题」写在 prompt 里：对不上 hunk 时会扫整个变更后文件，反射器对 diff 里证实不了的评论放行。
           </div>
         </div>
         <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/tools.md">tools.md</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/toolsconfig/tools.json">tools.json</a> · 论文 Table 2</p>
@@ -679,7 +693,7 @@ botId, ok = ...
       <section class="slide" data-section="实现">
         <div>
           <div class="kicker"><b>11 · 实现 · 行号</b><span>消除行号幻觉</span></div>
-          <h1>不信任模型口报行号，用片段回贴</h1>
+          <h1>模型不报行号；用 existing_code 片段回贴</h1>
         </div>
         <div class="two">
           <div>
@@ -696,7 +710,7 @@ botId, ok = ...
             <div class="panel">
               <span class="tag mix">对应截图</span>
               <h2 style="font-size:20px">lines: 411–420</h2>
-              <p>报告里的精确行号，来自 existing_code 与 diff/文件的匹配，不是模型在 JSON 里随手填的数字。空白行容忍、CRLF、多行片段都在 resolver 测试里覆盖。</p>
+              <p>code_comment 只交片段，不交行号；报告里的 411–420 由 resolver 匹配算出。空白行容忍、CRLF、多行片段都在测试里覆盖。</p>
             </div>
             <div class="term" style="margin-top:10px">
 code_comment 输入（概念）:
@@ -734,8 +748,8 @@ code_comment 输入（概念）:
             <div class="panel">
               <h2 style="font-size:18px">还有 fail-fast</h2>
               <ul>
-                <li>发 LLM 前若消息已超 80% → 跳过该文件并告警</li>
-                <li>单文件 diff 本身超 80% → 分发前过滤</li>
+                <li>主循环前，初始 prompt 已超 80% → 跳过该文件。Plan 若已跑过，那一次调用已经发生</li>
+                <li>单文件 diff 本身超 80% → 分发前过滤，Plan 也不会跑</li>
                 <li>论文：有界工具 + 压缩，对抗 free-form agent 的 token 膨胀</li>
               </ul>
             </div>
@@ -783,16 +797,16 @@ code_comment 输入（概念）:
           <div class="axis-wrap">
             <div class="axis-name">Precision · OCR 六档 25.20%–37.80%（论文概括 25–38%）</div>
             <div class="axis"><div class="band ocr" style="left:50.4%;width:25.2%"></div></div>
-            <div class="ticks"><span>0</span><span>25.20</span><span>37.80</span><span>50%</span></div>
+            <div class="ticks"><span style="left:0">0</span><span style="left:50.4%">25.20</span><span style="left:75.6%">37.80</span><span>50%</span></div>
           </div>
           <div class="axis-wrap">
             <div class="axis-name">Precision · Claude Code 五档 7.23%–15.93%（Codex GPT-5.5 为 27.82%，不在此带）</div>
             <div class="axis"><div class="band cc" style="left:14.46%;width:17.4%"></div></div>
-            <div class="ticks"><span>0</span><span>7.23</span><span>15.93</span><span>50%</span></div>
+            <div class="ticks"><span style="left:0">0</span><span style="left:14.46%">7.23</span><span style="left:31.86%">15.93</span><span>50%</span></div>
           </div>
           <div class="call warn">
             <strong>§4.4 方向：</strong>
-            OCR 停在高精度、中等召回，作者写成独立反思的直接后果。关掉 REVIEW_FILTER 前后差几个点，论文没有开关实验。不能把「7% → 25–38%」说成反射器单独测出的增量。
+            OCR 停在高精度、中等召回，作者写成独立反思的直接后果。论文没有关掉 REVIEW_FILTER 的开关实验，因此无法判断反射器单独贡献了几个点。不能把「7% → 25–38%」说成反射器单独测出的增量。
           </div>
         </div>
         <p class="src">论文 §4.2(2)、§4.4、§5(2)。<a href="https://arxiv.org/html/2608.09290v2">arxiv.org/html/2608.09290v2</a></p>
@@ -840,12 +854,12 @@ code_comment 输入（概念）:
           <div class="panel">
             <span class="tag mix">Delegation</span>
             <h2 style="font-size:18px">可选</h2>
-            <p>OCR 只做文件选择与规则解析，审查由宿主 Agent 的 LLM 跑——适合已有订阅、不想再配 OCR Key。</p>
+            <p>OCR 只做文件选择与规则解析；子 Agent、行号、压缩、Reflector 不跑。审查由宿主 Agent 的 LLM 承担——适合已有订阅、不想再配 OCR Key。</p>
           </div>
         </div>
         <div class="call" style="margin-top:14px">
           <strong>对部门落地的含义：</strong>
-          研发可在 Cursor 里日常用（如截图）；CI 里跑 <span class="num">ocr review --from … --to … --format json</span>。同一套确定性前半段，两套外壳。
+          研发可在 Cursor 里日常用（如截图）；CI 里跑 <span class="num">ocr review --from … --to … --format json</span>。完整 CLI 才有子 Agent / 行号 / 反射；Delegation 只共享过滤与规则前半段。
         </div>
         <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/plugins/open-code-review/README.md">plugins README</a> · 文档 Delegate / Cursor 集成</p>
       </section>
@@ -883,16 +897,16 @@ code_comment 输入（概念）:
           </div>
           <div class="panel">
             <span class="tag det">成本</span>
-            <h2 style="font-size:20px">Token 与时间</h2>
+            <h2 style="font-size:20px">每条 PR 平均</h2>
             <ol>
               <li>OCR：385K，1m23s</li>
               <li>Claude Code：5,664K，13m06s</li>
-              <li>≈14.7× token；论文概括同模型对照 5–15×</li>
-              <li>生成量：301/889 vs 435/5,980</li>
+              <li>≈14.7× token。Claude Code 同模型约 5–15×；Codex ≈1.25×</li>
+              <li>命中/生成：301/889 vs 435/5,980。精度是五次均值，不能用这两数互除</li>
             </ol>
           </div>
         </div>
-        <p class="src">表 3。裁判 Qwen3-235B-A22B-Instruct，每配置 5 次取均值。正文写 Claude Code 生成 4,580，与表 5,980 不一致，本页以表为准。<a href="https://arxiv.org/abs/2601.19494">AACR-Bench</a></p>
+        <p class="src">表 3。Token、时间是每条 PR 平均；命中/生成是 200 PR 累计。裁判五次均值。正文 4,580 与表 5,980 以表为准。<a href="https://arxiv.org/abs/2601.19494">AACR-Bench</a></p>
       </section>
 
       <!-- 19 cross model -->
@@ -904,7 +918,7 @@ code_comment 输入（概念）:
         <div>
           <table class="dense">
             <thead>
-              <tr><th>模型</th><th>系统</th><th>SEM-F1</th><th>Prec.</th><th>Recall</th><th>Match/Gen</th><th>Token</th><th>时间</th></tr>
+              <tr><th>模型</th><th>系统</th><th>SEM-F1</th><th>Prec.</th><th>Recall</th><th>Match/Gen</th><th>均 Token</th><th>均时间</th></tr>
             </thead>
             <tbody>
               <tr class="hi"><td>Claude-4.6-Opus</td><td>OCR</td><td class="num">25.10%</td><td class="num">33.90%</td><td class="num">20.00%</td><td class="num">301/889</td><td class="num">385K</td><td class="num">1m23s</td></tr>
@@ -922,7 +936,7 @@ code_comment 输入（概念）:
             </tbody>
           </table>
         </div>
-        <p class="src">整表抄自论文表 3。绿底 OCR；红底 Claude Code 最高 SEM-F1。Codex 精度不低但召回极低。</p>
+        <p class="src">整表抄自论文表 3。均 Token、均时间是每条 PR 的平均；Match/Gen 是 200 PR 累计。17.90% 为 Claude-4.8-Opus 与 Deepseek-V4-Pro 并列。绿底 OCR；红底 Claude Code 最高 SEM-F1。</p>
       </section>
 
       <!-- 20 tradeoff -->
@@ -944,7 +958,7 @@ code_comment 输入（概念）:
             </div>
             <div class="call warn">
               <strong>不适合当穷举。</strong>
-              安全审计、合规扫雷若以「尽量不漏专家会标的问题」为第一目标，20% 召回不够。
+              这 20% 是 AACR-Bench 专家评论的召回，不是安全漏洞专项召回。若目标是尽量不漏这些专家标注，绝对命中也更少（301 vs Claude Code 435）。
             </div>
             <p class="note">SEM-F1 不衡量可操作性与严重程度；有用但未对上标注的评论会计成假阳性。</p>
           </div>
@@ -962,7 +976,7 @@ code_comment 输入（概念）:
           <div class="card">
             <div class="n">可观测性</div>
             <h2>日志字段被遮蔽</h2>
-            <p>botId / sessionId / requestId 打空，排障链断。OCR 截图正是这类 correctness。</p>
+            <p>botId / sessionId / requestId 打空，排障链断。OCR 截图正是这类正确性缺陷。</p>
           </div>
           <div class="card">
             <div class="n">同步与异步</div>
@@ -1008,7 +1022,7 @@ code_comment 输入（概念）:
             </div>
           </article>
         </div>
-        <p class="src">对应 Rule-Guided Dispatch、filter-only、asymmetric information boundary。§7：系统设计贡献大于模型选择。</p>
+        <p class="src">对应 Rule-Guided Dispatch、filter-only、asymmetric information boundary。Claude-4.6 同模型差约 13.5 个 SEM-F1 点，大于 OCR 内部极差 7.2；Claude-4.8 同模型只差约 3.8。</p>
       </section>
 
       <!-- 23 checklist for team -->
@@ -1042,21 +1056,21 @@ code_comment 输入（概念）:
       <section class="slide" data-section="收束">
         <div>
           <div class="kicker"><b>23 · 收束</b><span>一句话带走</span></div>
-          <h1>系统设计对质量的贡献，大于换一个模型</h1>
-          <p class="sub">同一模型 SEM-F1 2.17×、精度约 4.7×、召回主动变低、token 少一个数量级。Cursor「越找越多」是现象；能量化的是 Claude Code / Codex。截图证明：落到业务仓时，输出是可核对的工程评论。</p>
+          <h1>Claude-4.6 上，换 Harness 比换模型更拉开差距</h1>
+          <p class="sub">SEM-F1 差 13.5 个点（2.17×），大于 OCR 内换模型的 7.2 个点；Claude-4.8 同模型只差 3.8 个点。精度约 4.7×，召回更低（301 vs 435 条命中）。token 是每条 PR 平均，约 14.7×。能量化的是 Claude Code / Codex。</p>
         </div>
         <div class="cards">
           <article class="card"><div class="n">确定性</div><h2>范围与规则</h2><p>过滤、规则链、并发边界</p></article>
           <article class="card"><div class="n">有界探索</div><h2>工具与压缩</h2><p>六工具、三分区、轮次上限</p></article>
           <article class="card"><div class="n">独立核查</div><h2>行号与反射</h2><p>片段回贴、只删不增、信息边界</p></article>
         </div>
-        <p class="src">论文 §7 结论。</p>
+        <p class="src">数字见表 3。§7「设计大于模型」只覆盖 Claude-4.6 这类对照：不是每一档都大于换模型，也不是消融证明。</p>
       </section>
 
       <!-- 25 refs -->
       <section class="slide" data-section="收束">
         <div>
-          <div class="kicker"><b>24 · 出处</b><span>本页无新数字</span></div>
+          <div class="kicker"><b>24 · 出处</b><span>链接 · 版本 · 评测规模</span></div>
           <h1>链接与版本</h1>
         </div>
         <ul class="links">
@@ -1102,7 +1116,7 @@ code_comment 输入（概念）:
 </div>
 <div class="chrome">
   <div class="bar" id="bar"></div>
-  <span id="pos">01 / 26</span>
+  <span id="pos">01 / 27</span>
   <span id="sec">开场</span>
   <span>? 帮助 · F 全屏</span>
 </div>
@@ -1110,7 +1124,7 @@ code_comment 输入（概念）:
   <div class="card">
     <h2>翻页</h2>
     <p>← → 、空格、PageUp / PageDown。Home / End 到两端。</p>
-    <p>点击画面左缘回退，右缘前进。链接点击不会翻页。</p>
+    <p>点击画面左缘回退，右缘前进，也可以左右滑动。链接点击不会翻页。</p>
     <p>F 全屏。? 或 Esc 关闭说明。</p>
   </div>
 </div>
@@ -1123,13 +1137,24 @@ code_comment 输入（概念）:
   var pos = document.getElementById("pos");
   var sec = document.getElementById("sec");
   var help = document.getElementById("help");
+  var viewport = document.querySelector(".viewport");
   var i = 0;
+  var down = null;
+  var gesture = 0;
+  var swallowClick = false;
 
   function fit() {
-    var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    var vv = window.visualViewport;
+    var w = vv ? vv.width : window.innerWidth;
+    var h = vv ? vv.height : window.innerHeight;
+    var s = Math.min(w / 1280, h / 720);
+    if (!(s > 0) || !isFinite(s)) s = 1;
     frame.style.width = (1280 * s) + "px";
     frame.style.height = (720 * s) + "px";
-    stage.style.transform = "scale(" + s + ")";
+    // zoom 改变布局盒，让 iOS 的点击区域和看见的画面重合。
+    // transform: scale 只缩放绘制，布局仍是 1280×720，iPhone 上大部分点击会落空。
+    stage.style.zoom = s;
+    stage.style.transform = "none";
   }
 
   function show(n) {
@@ -1160,15 +1185,99 @@ code_comment 输入（概念）:
     }
   });
 
-  stage.addEventListener("click", function (e) {
-    if (e.target.closest("a, button")) return;
+  function turn(delta) {
+    var token = ++gesture;
+    swallowClick = true;
+    setTimeout(function () { if (token === gesture) swallowClick = false; }, 1000);
+    show(i + delta);
+  }
+
+  function stepFromX(clientX) {
     var rect = frame.getBoundingClientRect();
-    var x = e.clientX - rect.left;
-    if (x < rect.width * 0.18) show(i - 1); else show(i + 1);
+    return (clientX - rect.left) < rect.width * 0.18 ? -1 : 1;
+  }
+
+  function beginGesture(x, y, id, target) {
+    if (help.classList.contains("on")) return;
+    down = {
+      x: x,
+      y: y,
+      id: id,
+      link: !!(target && target.closest && target.closest("a, button"))
+    };
+  }
+
+  function endGesture(x, y) {
+    if (!down) return false;
+    var dx = x - down.x;
+    var dy = y - down.y;
+    var startedOnLink = down.link;
+    down = null;
+    if (help.classList.contains("on")) return false;
+    if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy)) {
+      turn(dx < 0 ? 1 : -1);
+      return true;
+    }
+    if (startedOnLink || Math.abs(dx) > 18 || Math.abs(dy) > 18) return false;
+    turn(stepFromX(x));
+    return true;
+  }
+
+  viewport.addEventListener("pointerdown", function (e) {
+    if (e.pointerType !== "mouse" || e.isPrimary === false || (e.button && e.button !== 0)) return;
+    beginGesture(e.clientX, e.clientY, e.pointerId, e.target);
+    if (down && !down.link) {
+      try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  });
+
+  viewport.addEventListener("pointerup", function (e) {
+    if (!down || down.id !== e.pointerId) return;
+    endGesture(e.clientX, e.clientY);
+  });
+
+  viewport.addEventListener("pointercancel", function (e) {
+    if (down && down.id === e.pointerId) down = null;
+  });
+
+  viewport.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) { down = null; return; }
+    var t = e.touches[0];
+    beginGesture(t.clientX, t.clientY, "touch", e.target);
+  }, { passive: true });
+
+  viewport.addEventListener("touchmove", function (e) {
+    if (!down || down.id !== "touch" || !e.cancelable) return;
+    var dx = e.touches[0].clientX - down.x;
+    var dy = e.touches[0].clientY - down.y;
+    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) e.preventDefault();
+  }, { passive: false });
+
+  viewport.addEventListener("touchend", function (e) {
+    if (!down || down.id !== "touch") return;
+    var t = e.changedTouches[0];
+    if (endGesture(t.clientX, t.clientY)) e.preventDefault();
+  }, { passive: false });
+
+  viewport.addEventListener("touchcancel", function () {
+    if (down && down.id === "touch") down = null;
+  });
+
+  viewport.addEventListener("click", function (e) {
+    if (swallowClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      swallowClick = false;
+      return;
+    }
+    if (help.classList.contains("on")) return;
+    if (e.target.closest("a, button")) return;
+    show(i + stepFromX(e.clientX));
   });
 
   help.addEventListener("click", function () { help.classList.remove("on"); });
   window.addEventListener("resize", fit);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
   window.addEventListener("hashchange", fromHash);
   fit();
   fromHash();
