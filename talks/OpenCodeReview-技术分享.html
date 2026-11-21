@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+<title>确定性工程如何驯服不确定的 Agent · Open Code Review</title>
+<style>
+  :root {
+    --bg: #0e100e;
+    --slide: #141714;
+    --ink: #f4f1ea;
+    --muted: #b7b1a6;
+    --dim: #8c867c;
+    --line: rgba(244, 241, 234, 0.14);
+    --copper: #e0a15c;
+    --copper-dim: rgba(224, 161, 92, 0.16);
+    --moss: #9cbe86;
+    --moss-dim: rgba(156, 190, 134, 0.16);
+    --violet: #c4b6ef;
+    --violet-dim: rgba(196, 182, 239, 0.16);
+    --rose: #e39b90;
+    --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+    --sans: "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
+      "WenQuanYi Micro Hei", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "Sarasa Mono SC", "Noto Sans Mono CJK SC", "JetBrains Mono",
+      "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    overflow: hidden; overscroll-behavior: none;
+  }
+  body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  a { color: var(--copper); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: #f0c48a; }
+
+  .viewport {
+    height: 100%; height: 100dvh; width: 100%;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    touch-action: none;
+  }
+  .frame { position: relative; max-width: 100%; touch-action: none; }
+  .stage {
+    width: 1280px; height: 720px; position: absolute; left: 0; top: 0;
+    transform-origin: top left; background: var(--slide); box-shadow: var(--shadow); overflow: hidden;
+    cursor: pointer; touch-action: none;
+  }
+  .slide {
+    display: none; position: absolute; inset: 0; padding: 40px 52px 72px;
+    grid-template-rows: auto minmax(0, 1fr); gap: 14px;
+  }
+  .slide.on { display: grid; }
+  .slide.tight { padding-bottom: 64px; }
+
+  .kicker {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 24px;
+    color: var(--dim); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .kicker b { color: var(--copper); font-weight: 650; letter-spacing: 0.08em; }
+  h1 { margin: 0; font-size: 36px; line-height: 1.18; font-weight: 680; letter-spacing: -0.02em; }
+  h1.sm { font-size: 30px; }
+  .sub { margin: 6px 0 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+  .src {
+    position: absolute; left: 52px; right: 52px; bottom: 24px;
+    color: var(--dim); font-size: 11px; line-height: 1.4;
+  }
+  .src a { color: #c9b396; }
+  .chrome {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 36px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; color: var(--dim); font-size: 12px; font-family: var(--mono); pointer-events: none;
+  }
+  .chrome .bar { position: absolute; left: 0; top: 0; height: 2px; background: var(--copper); }
+  .help {
+    position: fixed; inset: 0; background: rgba(8, 9, 8, 0.72);
+    display: none; align-items: center; justify-content: center; z-index: 5;
+  }
+  .help.on { display: flex; }
+  .help .card {
+    width: 440px; background: #1c201c; border: 1px solid var(--line);
+    padding: 28px 32px; border-radius: 12px;
+  }
+  .help h2 { margin: 0 0 12px; font-size: 20px; }
+  .help p { margin: 0 0 8px; color: var(--muted); line-height: 1.5; }
+
+  .hero-title { font-size: 42px; max-width: 1000px; }
+  .hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px; align-items: end; }
+  .stat-stack { display: flex; flex-direction: column; gap: 12px; }
+  .stat {
+    border-top: 1px solid var(--line); padding-top: 10px;
+    display: grid; grid-template-columns: 132px 1fr auto; gap: 12px; align-items: baseline;
+  }
+  .stat .name { color: var(--muted); font-size: 13px; }
+  .stat .path { font-family: var(--mono); font-size: 18px; }
+  .stat .mult { font-family: var(--mono); font-size: 26px; color: var(--moss); }
+  .meta-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .pill {
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px;
+    color: var(--muted); font-size: 12px;
+  }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-height: 0; }
+  .split3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; min-height: 0; }
+  .panel {
+    border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+    background: rgba(255, 255, 255, 0.02); min-height: 0;
+  }
+  .panel h2 { margin: 0 0 8px; font-size: 22px; }
+  .panel p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
+  .panel ol, .panel ul { margin: 10px 0 0; padding-left: 18px; color: var(--ink); }
+  .panel li { margin: 6px 0; font-size: 14px; line-height: 1.4; }
+  .tag {
+    display: inline-block; font-size: 11px; letter-spacing: 0.08em;
+    padding: 3px 8px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .tag.det { background: var(--copper-dim); color: var(--copper); }
+  .tag.llm { background: var(--violet-dim); color: var(--violet); }
+  .tag.mix { background: var(--moss-dim); color: var(--moss); }
+  .ask { margin-top: 6px; font-size: 24px; line-height: 1.3; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card {
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .card .n { font-family: var(--mono); color: var(--copper); font-size: 12px; }
+  .card h2 { margin: 6px 0; font-size: 20px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+  .judgment {
+    margin-top: 14px; padding: 14px 18px; border-left: 3px solid var(--copper);
+    background: var(--copper-dim); font-size: 18px; line-height: 1.4;
+  }
+  .fine { margin-top: 10px; color: var(--dim); font-size: 13px; line-height: 1.45; }
+
+  .pipe { display: flex; margin: 6px 0 0; padding: 0; list-style: none; }
+  .pipe li {
+    flex: 1; min-height: 104px; margin-left: -10px; padding: 12px 12px 12px 22px;
+    display: flex; flex-direction: column; justify-content: center;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%);
+  }
+  .pipe li:first-child {
+    margin-left: 0; padding-left: 14px;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+  }
+  .pipe li strong { font-size: 15px; font-weight: 680; }
+  .pipe li span { margin-top: 4px; font-size: 11px; line-height: 1.3; opacity: 0.85; }
+  .pipe li.det { background: #3a2c1c; color: #f3d7b0; }
+  .pipe li.llm { background: #2c2740; color: #ddd4f7; }
+  .pipe li.mix { background: #243228; color: #d5ead0; }
+  .legend { display: flex; gap: 16px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .sw.det { background: #e0a15c; } .sw.llm { background: #c4b6ef; } .sw.mix { background: #9cbe86; }
+  .forbid { margin-top: 14px; display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; }
+  .forbid b { font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+    vertical-align: top; line-height: 1.35;
+  }
+  th { color: var(--dim); font-weight: 600; font-size: 11px; letter-spacing: 0.06em; }
+  td.who { white-space: nowrap; color: var(--copper); font-weight: 650; }
+  td.who.llm { color: var(--violet); }
+  td.who.mix { color: var(--moss); }
+  table.dense { font-size: 12px; }
+  table.dense th, table.dense td { padding: 4px 7px; }
+  table.dense tr.hi td { background: rgba(156, 190, 134, 0.1); }
+  table.dense tr.lo td { background: rgba(227, 155, 144, 0.08); }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .two { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; min-height: 0; }
+  .gates { list-style: none; margin: 0; padding: 0; }
+  .gates li {
+    display: grid; grid-template-columns: 26px 1fr; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px;
+  }
+  .gates .i { font-family: var(--mono); color: var(--copper); }
+  .term {
+    background: #0c0e0c; border-radius: 12px; border: 1px solid var(--line);
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: #d9d3c8;
+  }
+  .term .cmd { color: var(--moss); }
+  .term .dim { color: #8d887e; }
+  .term .g { color: #9cbe86; }
+  .term .r { color: #e39b90; }
+  .note { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+  .bound { display: grid; grid-template-columns: 1fr 48px 1fr; gap: 8px; align-items: stretch; }
+  .bound .arrow { display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 26px; }
+  .steps { margin: 10px 0 0; padding: 0; list-style: none; }
+  .steps li { padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
+  .steps b { color: var(--ink); }
+
+  .bars { display: flex; flex-direction: column; gap: 14px; }
+  .metric-label { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+  .pair { display: grid; gap: 5px; }
+  .brow { display: grid; grid-template-columns: 110px 1fr 84px; gap: 8px; align-items: center; font-size: 13px; }
+  .track { height: 16px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; }
+  .fill { height: 100%; border-radius: 4px; }
+  .fill.ocr { background: #9cbe86; }
+  .fill.cc { background: #e0a15c; }
+  .brow .v { font-family: var(--mono); text-align: right; }
+
+  .call {
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+    background: rgba(156, 190, 134, 0.08); font-size: 14px; line-height: 1.45;
+  }
+  .call strong { color: var(--moss); }
+  .call.warn { background: rgba(224, 161, 92, 0.08); }
+  .call.warn strong { color: var(--copper); }
+
+  .axis-wrap { margin: 6px 0 14px; }
+  .axis-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .axis { position: relative; height: 32px; background: rgba(255,255,255,0.04); border-radius: 6px; }
+  .band { position: absolute; top: 5px; height: 22px; border-radius: 4px; }
+  .band.ocr { background: #9cbe86; }
+  .band.cc { background: #e0a15c; }
+  .ticks {
+    position: relative; height: 16px; margin-top: 3px;
+    color: var(--dim); font-family: var(--mono); font-size: 11px;
+  }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span:first-child { transform: none; left: 0 !important; }
+  .ticks span:last-child { transform: none; left: auto !important; right: 0; }
+
+  .principles { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .principle {
+    display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center;
+    border-top: 1px solid var(--line); padding-top: 10px;
+  }
+  .principle .n { font-family: var(--mono); font-size: 24px; color: var(--copper); }
+  .principle h2 { margin: 0 0 3px; font-size: 18px; }
+  .principle p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.4; }
+
+  .links { columns: 2; column-gap: 24px; margin: 0; padding: 0; list-style: none; }
+  .links li { break-inside: avoid; margin: 0 0 9px; font-size: 13px; line-height: 1.35; color: var(--muted); }
+  .links a { word-break: break-all; }
+
+  .agenda { display: grid; grid-template-columns: 88px 1fr 72px; gap: 10px 16px; align-items: baseline; }
+  .agenda .t { font-family: var(--mono); color: var(--copper); font-size: 14px; }
+  .agenda .m { font-size: 16px; }
+  .agenda .d { color: var(--dim); font-size: 13px; }
+  .agenda .row { display: contents; }
+  .agenda .row > * { padding: 10px 0; border-bottom: 1px solid var(--line); }
+
+  .shot-wrap {
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    background: #000; max-height: 430px; display: flex; align-items: center; justify-content: center;
+  }
+  .shot-wrap img { width: 100%; height: auto; display: block; object-fit: contain; max-height: 430px; }
+  .shot-side { display: flex; flex-direction: column; gap: 10px; }
+  .finding {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    background: rgba(255,255,255,0.02);
+  }
+  .finding h3 { margin: 0 0 6px; font-size: 15px; color: var(--rose); }
+  .finding p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+  .codeb {
+    margin-top: 8px; background: #0c0e0c; border-radius: 8px; padding: 10px 12px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.45; color: #d9d3c8; white-space: pre-wrap;
+  }
+  .codeb .bad { color: #e39b90; }
+  .codeb .ok { color: #9cbe86; }
+
+  .flow-v { list-style: none; margin: 0; padding: 0; }
+  .flow-v li {
+    position: relative; padding: 10px 12px 10px 18px; margin-bottom: 8px;
+    border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,0.02);
+    font-size: 14px; line-height: 1.4;
+  }
+  .flow-v li strong { display: block; margin-bottom: 2px; }
+  .flow-v li::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 10px 0 0 10px;
+  }
+  .flow-v li.det::before { background: var(--copper); }
+  .flow-v li.llm::before { background: var(--violet); }
+  .flow-v li.mix::before { background: var(--moss); }
+
+  .toolgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tool {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    background: rgba(255,255,255,0.02);
+  }
+  .tool .nm { font-family: var(--mono); color: var(--moss); font-size: 14px; }
+  .tool p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  .tool .ph { font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+  .zone {
+    display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px; margin-top: 8px;
+  }
+  .zone > div {
+    border: 1px solid var(--line); border-radius: 10px; padding: 14px; text-align: center;
+  }
+  .zone h3 { margin: 0 0 6px; font-size: 16px; }
+  .zone p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+  .zone .f { background: rgba(224,161,92,0.08); }
+  .zone .c { background: rgba(196,182,239,0.08); }
+  .zone .a { background: rgba(156,190,134,0.08); }
+
+  @media print {
+    .viewport { display: block; height: auto; overflow: visible; }
+    .frame { width: auto !important; height: auto !important; }
+    .stage { position: static; transform: none !important; zoom: 1 !important; width: auto; height: auto; box-shadow: none; }
+    .slide {
+      display: grid !important; position: relative; width: 1280px; height: 720px;
+      break-after: page; page-break-after: always;
+    }
+    .chrome, .help { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="viewport">
+  <div class="frame" id="frame">
+    <div class="stage" id="stage">
+
+      <!-- 0 cover -->
+      <section class="slide on" data-section="开场">
+        <div>
+          <div class="kicker"><b>技术分享 · 语音服务研发</b><span>系统设计如何驯服 Agent 不确定性</span></div>
+          <h1 class="hero-title">确定性工程如何驯服不确定的 Agent</h1>
+          <p class="sub">Open Code Review 架构解析。同一模型，换一套 Harness——这是一次系统对照，不是模型榜。</p>
+          <div class="meta-row">
+            <span class="pill">演讲人 · 语音服务研发</span>
+            <span class="pill">约 60 分钟</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 0b 结论前置 -->
+      <section class="slide" data-section="开场">
+        <div>
+          <div class="kicker"><b>结论前置 · 同一模型，换一套 Harness</b><span>系统对照，不是模型榜</span></div>
+          <h1>先说结论：换工程，SEM-F1 约 2.2×</h1>
+        </div>
+        <div class="hero-grid">
+          <div class="stat-stack">
+            <div class="stat">
+              <div class="name">SEM-F1<br>论文主指标</div>
+              <div class="path num">CC 11.57% → OCR 25.10%</div>
+              <div class="mult">2.17×</div>
+            </div>
+            <div class="stat">
+              <div class="name">Precision<br>裁判五次均值</div>
+              <div class="path num">CC 7.23% → OCR 33.90%</div>
+              <div class="mult">≈4.7×</div>
+            </div>
+            <div class="stat">
+              <div class="name">Recall<br>OCR 更低</div>
+              <div class="path num">CC 28.90% → OCR 20.00%</div>
+              <div class="mult" style="color:var(--copper)">少而准</div>
+            </div>
+          </div>
+          <div>
+            <p class="sub" style="margin-top:0">后端 Claude-4.6-Opus。OCR v1.3.1 对 Claude Code v2.1.169。2.17× / 4.7× 来自表 3 打印值。SEM-F1、精度、召回都是语义裁判复跑五次的均值，不是审查系统复跑。正文 4,580 与表 5,980 冲突时以表为准。后文 token 与时间是每条 PR 的平均。精度更高、召回更低，是同一组数据里的取舍。</p>
+            <div class="meta-row">
+              <span class="pill">同模型对照</span>
+              <span class="pill">换的是 Harness</span>
+              <span class="pill">数字见论文表 3</span>
+            </div>
+          </div>
+        </div>
+        <p class="src">Li et al., OpenCodeReview, arXiv:2608.09290, 表 3 与 §4.2。<a href="https://arxiv.org/abs/2608.09290">arxiv.org/abs/2608.09290</a></p>
+      </section>
+
+      <!-- 1 agenda -->
+      <section class="slide" data-section="开场">
+        <div>
+          <div class="kicker"><b>00 · 议程</b><span>20 页 · 一小时</span></div>
+          <h1>今天讲什么、不讲什么</h1>
+        </div>
+        <div class="agenda">
+          <div class="row"><span class="t">0–10′</span><span class="m">现象与现场截图：chat_log 里的 botId 遮蔽</span><span class="d">建立直觉</span></div>
+          <div class="row"><span class="t">10–25′</span><span class="m">通用 Agent 的三个结构性弱点</span><span class="d">为什么不稳</span></div>
+          <div class="row"><span class="t">25–45′</span><span class="m">OCR 流水线实现：过滤、规则、分组、子 Agent（工具）、行号、反射</span><span class="d">核心</span></div>
+          <div class="row"><span class="t">45–55′</span><span class="m">数据结论与召回取舍</span><span class="d">取舍</span></div>
+          <div class="row"><span class="t">55–60′</span><span class="m">可迁移原则 + 语音业务适用场景 + 提问</span><span class="d">收束</span></div>
+        </div>
+        <p class="note" style="margin-top:16px">不讲安装步骤与配置百科。现场若条件允许，可补跑 <span class="num">ocr review --preview</span>（不花 token）。</p>
+        <p class="src">时长按语音服务研发部门技术分享节奏估算；页脚出处全部可点。</p>
+      </section>
+
+      <!-- 2 conflict -->
+      <section class="slide" data-section="现象">
+        <div>
+          <div class="kicker"><b>01 · 现象</b><span>先看见发散，再问为什么</span></div>
+          <h1>同一个变更，多问一轮</h1>
+        </div>
+        <div>
+          <div class="split">
+            <div class="panel">
+              <span class="tag llm">通用 Agent</span>
+              <h2>越找越多</h2>
+              <p>Cursor Agent 这类通用循环，再追问一轮，往往会再翻出一批评论。文件覆盖变了，行号对不上刚才那一版，真问题和顺嘴一说混在一起。</p>
+              <ol>
+                <li>大变更集里，它会挑着看。</li>
+                <li>报出来的位置经常漂。</li>
+                <li>提示词动几个字，结论就换一副面貌。</li>
+              </ol>
+            </div>
+            <div class="panel">
+              <span class="tag det">Open Code Review</span>
+              <h2>同一 diff 再跑，文件集不动</h2>
+              <p>哪些文件进入审查，由过滤器决定，不由模型当场发挥。评论若被 diff 事实直接打脸，会被拿掉；同一份 diff 再跑不会换一套审查范围（工作区若变了，diff 本身会变）。</p>
+              <ol>
+                <li>进不进审查，程序先算完。</li>
+                <li>行号由 existing_code 片段匹配算出，模型不报行号。</li>
+                <li>核查者只能删被证伪的评论，不能另起一条。</li>
+              </ol>
+            </div>
+          </div>
+          <p class="ask">模型可以是同一个。变的是谁来约束流程。</p>
+        </div>
+        <p class="src">左栏三点来自 README「Why Open Code Review」，是产品对通用 Agent 的观察，没有 Cursor 公开评测数字。量化对照对象是 Claude Code 与 Codex。<a href="https://github.com/alibaba/open-code-review/blob/main/README.zh-CN.md">README.zh-CN.md</a></p>
+      </section>
+
+      <!-- 3 screenshot full -->
+      <section class="slide tight" data-section="Demo">
+        <div>
+          <div class="kicker"><b>02 · 现场截图</b><span>Cursor 里跑 OCR Review · 业务 chat_log</span></div>
+          <h1 class="sm">直观感受：不是聊天，是结构化审查报告</h1>
+        </div>
+        <div class="shot-wrap">
+          <img src="cursor_ocr_chatlog.png" alt="Cursor 中 OCR Review 审查 chat_log 的截图：检出 botId 短变量遮蔽导致日志打空" />
+        </div>
+          <p class="src">截图文件：同目录 <span class="num">talks/cursor_ocr_chatlog.png</span>。范围：workspace · <span class="num">get_chat_log.go (+4/-4)</span> · <span class="num">sync_chat_log.go (+10/-5)</span>。问题：High / lines 411–420。截图徽章写 correctness；现行解析会收成 other。</p>
+      </section>
+
+      <!-- 4 screenshot anatomy -->
+      <section class="slide" data-section="Demo">
+        <div>
+          <div class="kicker"><b>03 · 截图拆解</b><span>观众眼里一眼能核对的东西</span></div>
+          <h1 class="sm">botId 短变量声明遮蔽 → 日志永远打空</h1>
+        </div>
+        <div class="two" style="grid-template-columns:1.1fr 0.9fr">
+          <div class="shot-side">
+            <div class="finding">
+              <h3>High · correctness · lines 411–420</h3>
+              <p>path: <span class="num">chat_log/sync_chat_log.go</span>。Agent 先 Thought「可能有变量遮蔽」，再 Explored 3 files，才落成评论——不是空口一说。</p>
+            </div>
+            <div class="codeb"><span class="bad">// 问题形态（截图中的逻辑）</span>
+var botId string
+if v, ok := ...; ok {
+    botId, ok := ...   <span class="bad">// := 新建内层 botId</span>
+    _ = hash(botId)    // 内层正确
+}
+log.Info(..., botId)   <span class="bad">// 外层仍是 ""</span>
+</div>
+            <div class="codeb"><span class="ok">// 建议：赋值到外层，不要短声明遮蔽</span>
+botId, ok = ...
+</div>
+          </div>
+          <div>
+            <div class="panel">
+              <span class="tag mix">对语音 / 会话业务为什么疼</span>
+              <h2 style="font-size:20px">可观测性静默失败</h2>
+              <p>哈希算对了，线上日志却永远打不出真实 botId。排障依赖会话维度时，这种 bug 比 panic 更难发现。</p>
+              <ul>
+                <li>评论带 path / lines / category / severity</li>
+                <li>附带可粘贴的 suggestion</li>
+                <li>审查范围写死在报告头，不随追问漂移</li>
+              </ul>
+            </div>
+            <p class="note">截图徽章是 correctness。现行枚举没有这一项，模型若填它，解析会收成 other。下一节拆为什么这类结果更稳。</p>
+          </div>
+        </div>
+        <p class="src">截图同源。OCR 行号由 <span class="num">existing_code</span> 匹配产生，见工具文档「锚定算法」。<a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/tools.md">tools.md</a></p>
+      </section>
+
+      <!-- 5 three weaknesses -->
+      <section class="slide" data-section="现象">
+        <div>
+          <div class="kicker"><b>04 · 结构</b><span>不要归咎「模型不行」</span></div>
+          <h1>纯语言驱动，审查流程没有硬约束</h1>
+        </div>
+        <div>
+          <div class="cards">
+            <article class="card">
+              <div class="n">01</div>
+              <h2>覆盖不全</h2>
+              <p>变更集一大，Agent 会偷懒，选择性漏掉文件。看哪些文件，变成了一次自由生成。</p>
+            </article>
+            <article class="card">
+              <div class="n">02</div>
+              <h2>位置漂移</h2>
+              <p>评论经常对不上真实代码。行号和文件引用会漂，读者得自己重新找位置。</p>
+            </article>
+            <article class="card">
+              <div class="n">03</div>
+              <h2>质量不稳</h2>
+              <p>Skill 和提示词用自然语言驱动，难调试。措辞一调，审查质量就跟着晃。</p>
+            </article>
+          </div>
+          <div class="judgment">同一套能力，放进没有硬约束的循环里，结果会随轨迹漂移。</div>
+          <p class="fine">论文收成两件事：工具动作空间太大，跑两遍对不齐；有效上下文又常停在 diff 附近。引出三道工程题：检索污染/不够、多文件连贯与并行、幻觉评论侵蚀信任。</p>
+        </div>
+        <p class="src">README 同上。论文 §1–§2：<a href="https://arxiv.org/html/2608.09290v2">arxiv.org/html/2608.09290v2</a></p>
+      </section>
+
+      <!-- 6 pipeline -->
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>05 · 流水线</b><span>不确定的只有被夹住的那一段</span></div>
+          <h1>模型进场之前，范围已经定了</h1>
+        </div>
+        <div>
+          <ol class="pipe">
+            <li class="det"><strong>Git diff</strong><span>工作区 / 提交 / 区间</span></li>
+            <li class="det"><strong>五重门</strong><span>二进制、排除、扩展名…</span></li>
+            <li class="det"><strong>规则</strong><span>四层链 · first-match</span></li>
+            <li class="mix"><strong>语义分组</strong><span>GROUPING_TASK · 每组 ≤10 文件</span></li>
+            <li class="llm"><strong>子 Agent</strong><span>按组隔离审查</span></li>
+            <li class="mix"><strong>行号</strong><span>片段回贴</span></li>
+            <li class="mix"><strong>反射</strong><span>只看 diff 证伪</span></li>
+            <li class="det"><strong>输出</strong><span>text / JSON</span></li>
+          </ol>
+          <div class="legend">
+            <span><i class="sw det"></i>确定性代码</span>
+            <span><i class="sw llm"></i>LLM 推理</span>
+            <span><i class="sw mix"></i>模型在场，边界由程序规定</span>
+          </div>
+          <div class="forbid">
+            <b>不交给模型决定</b>
+            <div class="chips">
+              <span class="chip">这个文件看不看</span>
+              <span class="chip">用哪一条规则</span>
+              <span class="chip">行号交给模型填写</span>
+              <span class="chip">被 diff 证伪的评论留不留</span>
+              <span class="chip">核查者能不能新写一条</span>
+            </div>
+          </div>
+          <p class="note">architecture.md 的流水线在「过滤+规则」与「分发」之间有一次独立的 <span class="num">GROUPING_TASK</span>：只喂文件元数据，把相关文件捆成一组（每组 ≤10），按组并行起子 Agent。<span class="num">README</span> 把它列在「确定性工程」标题下，但实现其实是一次 LLM 调用（混合步骤）。「每文件一组」只是分组失败 / 返回空 / 仅 1 文件时的退化兜底。</p>
+        </div>
+        <p class="src"><b style="color:inherit">下方「实现」各页按流水线 ②→⑦ 顺序展开：过滤→规则→分组→子 Agent（工具/压缩）→行号→反射；每页页眉标注所属阶段。</b><br>论文图 2、§3.1 · architecture.md 流水线（filter &amp; rules → semantic grouping → subtask dispatch）。<a href="https://arxiv.org/html/2608.09290v2">2608.09290v2</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/architecture.md">architecture.md</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/grouping.go">grouping.go</a></p>
+      </section>
+
+      <!-- 7 responsibility -->
+      <section class="slide" data-section="架构">
+        <div>
+          <div class="kicker"><b>06 · 职责分离</b><span>全场重点之一</span></div>
+          <h1>谁做什么，比提示词写什么更先决定质量</h1>
+        </div>
+        <div>
+          <table>
+            <thead><tr><th>环节</th><th>谁负责</th><th>为什么不能混</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>文件筛选、噪声目录、五重门、超大 diff 拦截</td>
+                <td class="who">确定性工程</td>
+                <td>漏看和误放不能靠模型自觉。同一份 diff，文件集应可复现。</td>
+              </tr>
+              <tr>
+                <td>规则匹配：临时 &gt; 项目 &gt; 用户全局 &gt; 内置</td>
+                <td class="who">确定性工程</td>
+                <td>标准先于推理。Replace / Merge 是配置，不是现场挑选。</td>
+              </tr>
+              <tr>
+                <td>语义文件分组：相关文件捆成一组，每组 ≤10，按 token 预算拆分</td>
+                <td class="who llm">GROUPING_TASK（LLM 调用）</td>
+                <td>只喂文件元数据不含 diff。分组失败 / 空 / 仅 1 文件时退化为每文件一组。</td>
+              </tr>
+              <tr>
+                <td>按组并行分发、组间上下文隔离、有界并发</td>
+                <td class="who">确定性调度</td>
+                <td>每组独立 goroutine + 独立消息缓冲，组内文件共享同一上下文。默认并发 8。</td>
+              </tr>
+              <tr>
+                <td>读上下文、追调用、判断是否缺陷</td>
+                <td class="who llm">LLM 子 Agent</td>
+                <td>语义只有模型能做。工具集审查专用，输出有上限。</td>
+              </tr>
+              <tr>
+                <td>评论行号</td>
+                <td class="who mix">确定性匹配为主</td>
+                <td>模型只交 existing_code；程序匹配出行号，失败才 RE_LOCATION_TASK。</td>
+              </tr>
+              <tr>
+                <td>评论是否被 diff 事实打脸</td>
+                <td class="who llm">独立 Reflector</td>
+                <td>只判事实真假，不判价值高低。只能删，不能新写。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="src">论文 §3.2–§3.4；架构文档「五重门」「评论处理流水线」「并发默认 8」。</p>
+      </section>
+
+      <!-- 8 five gates -->
+      <section class="slide" data-section="实现 · ② 五重门">
+        <div>
+          <div class="kicker"><b>07 · 实现 · 过滤</b><span>流水线 ②/⑧ · whyExcluded · 不花 token</span></div>
+          <h1>五重门：文件集在模型开口前算完</h1>
+        </div>
+        <div class="two">
+          <div>
+            <ol class="gates">
+              <li><span class="i">1</span><span>二进制 → <span class="num">binary</span></span></li>
+              <li><span class="i">2</span><span>命中当前层 exclude → <span class="num">user_exclude</span></span></li>
+              <li><span class="i">3</span><span>配置了 include 且命中 → 立刻保留，跳过后两门</span></li>
+              <li><span class="i">4</span><span>扩展名不在白名单 → <span class="num">unsupported_ext</span></span></li>
+              <li><span class="i">5</span><span>内置排除 → <span class="num">default_path</span>（测试、夹具、快照、<span class="num">*.pb.go</span>）</span></li>
+            </ol>
+            <p class="note">include 未命中不排除，不是白名单。exclude/include 只取最高一层。<span class="num">vendor/</span>、<span class="num">node_modules/</span>、<span class="num">target/</span> 等在 diff 层剔除。超大 diff 与删除文件不派发，预览里删除标 <span class="num">deleted</span>。</p>
+          </div>
+          <div>
+            <div class="term">
+              <div class="cmd">$ ocr review --preview</div>
+              <div class="dim"># 不调用 LLM。计数以现场为准。</div>
+              <div style="margin-top:8px">Preview: &lt;n&gt; file(s) changed</div>
+              <div class="g">Will review (&lt;n&gt;):</div>
+              <div>&nbsp;&nbsp;[M]  chat_log/sync_chat_log.go</div>
+              <div>&nbsp;&nbsp;[M]  chat_log/get_chat_log.go</div>
+              <div class="r">Excluded from review (&lt;n&gt;):</div>
+              <div>&nbsp;&nbsp;[M]  …_test.go     (default_path)</div>
+              <div>&nbsp;&nbsp;[B]  …/logo.png    (binary)</div>
+              <div>&nbsp;&nbsp;[D]  …/old.go      (deleted)</div>
+            </div>
+            <p class="note">这一屏就是「确定性工程在干活」。截图里 OCR 只审查了两个 chat_log 文件，与过滤器结果一致。</p>
+          </div>
+        </div>
+        <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/preview.go">preview.go</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/model/preview.go">model/preview.go</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/cmd/opencodereview/output.go">output.go</a> · architecture.md</p>
+      </section>
+
+      <!-- 9 rules -->
+      <section class="slide" data-section="实现 · ③ 规则">
+        <div>
+          <div class="kicker"><b>08 · 实现 · 规则</b><span>流水线 ③/⑧ · 四层链 · first-match-wins</span></div>
+          <h1>审查标准也是确定性的</h1>
+        </div>
+        <div class="two">
+          <div>
+            <table>
+              <thead><tr><th>优先级</th><th>来源</th><th>位置</th></tr></thead>
+              <tbody>
+                <tr><td class="num">1</td><td>临时覆盖</td><td><span class="num">--rule</span></td></tr>
+                <tr><td class="num">2</td><td>项目级</td><td><span class="num">.opencodereview/rule.json</span></td></tr>
+                <tr><td class="num">3</td><td>用户全局</td><td><span class="num">~/.opencodereview/rule.json</span></td></tr>
+                <tr><td class="num">4</td><td>内置系统</td><td>嵌入的 <span class="num">system_rules.json</span></td></tr>
+              </tbody>
+            </table>
+            <p class="note" style="margin-top:12px">规则正文按层先匹配，本层未命中才落到下一层；层内按声明顺序。命中后默认替换内置规则，<span class="num">merge_system_rule</span> 才拼接。正文注入 <span class="num">{{system_rule}}</span>。include/exclude 不走这条链。</p>
+          </div>
+          <div>
+            <div class="term">
+              <div class="cmd">$ ocr rules check chat_log/sync_chat_log.go</div>
+              <div class="dim"># 不跑审查，只看哪条规则生效</div>
+              <div style="margin-top:8px">Source: System built-in</div>
+              <div>… Go 规则正文（favor precision over recall）…</div>
+            </div>
+            <div class="call" style="margin-top:12px">
+              <strong>业务可定制。</strong>
+              语音 / 会话服务可在项目层加规则：日志必须带 botId/sessionId、禁止短声明遮蔽外层可观测字段、同步路径错误必须可追踪。标准进配置，不进口头提示。
+            </div>
+          </div>
+        </div>
+        <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/review-rules.md">review-rules.md</a> · 论文 §3.2 Rule-Guided Dispatch</p>
+      </section>
+
+      <!-- 9b semantic grouping (流水线 ④) -->
+      <section class="slide" data-section="实现 · ④ 语义分组">
+        <div>
+          <div class="kicker"><b>09 · 实现 · 语义分组</b><span>流水线 ④/⑧ · GROUPING_TASK · 每组 ≤10 文件</span></div>
+          <h1>相关文件捆成一组，再按组并行审查</h1>
+        </div>
+        <div class="two">
+          <div>
+            <div class="term">
+              <div class="cmd">$ GROUPING_TASK</div>
+              <div class="dim"># 只喂文件元数据，不喂正文 diff</div>
+              <div style="margin-top:8px">in&nbsp;&nbsp;: N 个文件的 {path, 变更规模, 命中规则}</div>
+              <div>out : 相关文件捆成组，每组 ≤10</div>
+              <div class="g">→&nbsp;&nbsp;&nbsp;每组并行起一个子 Agent（⑤）</div>
+            </div>
+            <p class="note">分组阶段不吃正文，元数据很小，token 成本可控；真正的正文只在子 Agent 里按需读。这一步把「谁该和谁一起被审」定下来——相关文件捆进同一对话，结构强相关的依赖免费共享上下文。</p>
+          </div>
+          <div>
+            <div class="call">
+              <strong>README 归到「确定性工程」，实现却是一次 LLM 调用。</strong>
+              它是流水线里被前后代码夹住的那一段不确定：分组错了不会崩，只是把本该一起审的文件拆散，各子 Agent 仍能各自跑完——所以放进带兜底的混合步骤，而不是让模型自由决定怎么分批。
+            </div>
+            <div class="call" style="margin-top:12px">
+              <strong>「每文件一组」只是退化兜底。</strong>
+              仅在分组失败 / 返回空 / 只有 1 个文件时才退到每文件一组。正常态下跨组、以及本次没变更的被依赖文件，都不共享巨型上下文，只能由子 Agent 用工具（⑤）按需取——分组是「按组隔离」能成立的前提。
+            </div>
+          </div>
+        </div>
+        <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/grouping.go">grouping.go</a> · architecture.md「filter &amp; rules → semantic grouping → subtask dispatch」· 论文 §3.1</p>
+      </section>
+
+      <!-- 10 subagent -->
+      <section class="slide" data-section="实现 · ⑤ 子 Agent">
+        <div>
+          <div class="kicker"><b>10 · 实现 · 子 Agent</b><span>流水线 ⑤/⑧ · 分而治之（按组） · 默认并发 8</span></div>
+          <h1>每个文件组，一个隔离循环</h1>
+        </div>
+        <div class="two">
+          <ul class="flow-v">
+            <li class="det"><strong>分发</strong>每个文件组独立 goroutine + 独立消息缓冲，组内文件共享同一上下文。受 <span class="num">--concurrency</span>（默认 8）约束。</li>
+            <li class="llm"><strong>Plan（可选）</strong>双阈值触发：组内单文件最大变更 ≥ <span class="num">50</span> 行，或（文件数 ≥ 2 且组合计 ≥ <span class="num">100</span> 行）。单次 LLM，不发 Tools 字段；只读工具名以纯文本告知。</li>
+            <li class="llm"><strong>Main 循环</strong>外层评审轮次 <span class="num">MAX_REVIEW_ROUNDS</span> 由 <span class="num">--effort</span> 决定（low=1 / medium=2 默认 / high=3）；每轮内层工具调用上限 <span class="num">MAX_TOOL_REQUEST_TIMES</span>（默认 100）。</li>
+            <li class="mix"><strong>退出（5 条）</strong>task_done / 工具请求耗尽 / 连续 3 轮无有效工具结果 / context 取消 / 压缩压不回警告阈值。</li>
+          </ul>
+          <div>
+            <div class="panel">
+              <span class="tag det">为什么按组切</span>
+              <h2 style="font-size:20px">连贯 vs 效率</h2>
+              <p>整 PR 塞进一个 Agent：上下文膨胀、信号稀释。切太碎（按 hunk）：看不到变更整体。语义分组是折中：相关文件捆进同一对话，结构强相关的依赖免费共享。跨组、以及本次没变更的被依赖文件，只能用工具按需取，不共享巨型上下文。</p>
+            </div>
+            <p class="note">「连续 3 轮」只计发出了工具调用、但没有有效结果的轮次（<span class="num">maxConsecutiveEmptyRounds=3</span>）。没解析出工具调用时只消耗 <span class="num">MAX_TOOL_REQUEST_TIMES</span>（默认 100）次上限。主循环里已收集的 <span class="num">code_comment</span> 才会进入后处理。</p>
+          </div>
+        </div>
+        <p class="src">architecture.md「每组子任务：plan + main」· <a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/grouping.go">grouping.go</a> · 论文 §3.3 Grounded File Review</p>
+      </section>
+
+      <!-- 11 tools -->
+      <section class="slide" data-section="实现 · ⑤ 子 Agent · 工具">
+        <div>
+          <div class="kicker"><b>11 · 实现 · 工具集</b><span>流水线 ⑤/⑧ · 六个 · 有界输出 · 不要 bash 自由探索</span></div>
+          <h1>审查专用工具，比通用 shell 更可预期</h1>
+        </div>
+        <div>
+          <div class="toolgrid">
+            <div class="tool"><div class="nm">file_read</div><p>读仓库内任意文件的内容（不要求该文件在本次 PR 中被修改），最多 500 行。</p><div class="ph">Main 可调 · Plan 仅见名</div></div>
+            <div class="tool"><div class="nm">file_find</div><p>按文件名关键字定位。</p><div class="ph">Main 可调 · Plan 仅见名</div></div>
+            <div class="tool"><div class="nm">code_search</div><p>全仓 grep；有匹配上限与超时。</p><div class="ph">Main 可调 · Plan 仅见名</div></div>
+            <div class="tool"><div class="nm">file_read_diff</div><p>读另一变更文件的 diff，确认跨文件关切。</p><div class="ph">Main 可调 · Plan 仅见名</div></div>
+            <div class="tool"><div class="nm">code_comment</div><p>提交评论：content + existing_code + 可选 suggestion。</p><div class="ph">仅 Main</div></div>
+            <div class="tool"><div class="nm">task_done</div><p>结束循环。Plan 阶段故意不可用。</p><div class="ph">仅 Main</div></div>
+          </div>
+          <div class="call warn" style="margin-top:12px">
+            <strong>硬的是 path 与工具面：</strong>
+            Plan 不发 Tools 字段；<span class="num">file_read</span>、<span class="num">file_find</span>、<span class="num">code_search</span>、<span class="num">file_read_diff</span> 只以纯文本出现。Main 才真正可调。<span class="num">code_comment</span> 的 path 会被改写成当前文件，评论挂不到别的文件上。「只评当前 diff 里看得到的问题」是写进 prompt 的软规则；定位另有硬兜底：对不上 hunk 时反射器会扫整个变更后文件，但对 diff 里证实不了的评论一律放行——软规则收窄、硬兜底防误杀，是两层机制。
+          </div>
+        </div>
+        <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/tools.md">tools.md</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/toolsconfig/tools.json">tools.json</a> · 论文 Table 2</p>
+      </section>
+
+      <!-- 12 line resolve -->
+      <section class="slide" data-section="实现 · ⑥ 行号回贴">
+        <div>
+          <div class="kicker"><b>12 · 实现 · 行号</b><span>流水线 ⑥/⑧ · 消除行号幻觉</span></div>
+          <h1>模型不报行号；用 existing_code 片段回贴</h1>
+        </div>
+        <div class="two">
+          <div>
+            <ol class="gates">
+              <li><span class="i">1</span><span><b>hunk 新侧</b>：existing_code 对 context+added 做滑动窗口匹配 → 新文件行号</span></li>
+              <li><span class="i">2</span><span><b>hunk 旧侧</b>：失败则试 context+deleted → 旧文件行号</span></li>
+              <li><span class="i">3</span><span><b>全文扫描</b>：对变更后文件逐行连续匹配</span></li>
+              <li><span class="i">4</span><span><b>RE_LOCATION_TASK</b>：仍失败则请模型重锚片段（可选回退）</span></li>
+              <li><span class="i">5</span><span>仍失败 → <span class="num">start_line=0, end_line=0</span>（未锚定信号）</span></li>
+            </ol>
+            <p class="note">CommentWorkerPool 异步做行解析，不堵主循环。Agent.Run 返回后顶层再跑一轮 ResolveLineNumbers。</p>
+          </div>
+          <div>
+            <div class="panel">
+              <span class="tag mix">对应截图</span>
+              <h2 style="font-size:20px">lines: 411–420</h2>
+              <p>code_comment 只交片段，不交行号；报告里的 411–420 由 resolver 匹配算出。空白行容忍、CRLF、多行片段都在测试里覆盖。</p>
+            </div>
+            <div class="term" style="margin-top:10px">
+code_comment 输入（概念）:
+  content: "botId 短变量遮蔽…"
+  existing_code: "botId, ok := …"
+  suggestion_code: "botId, ok = …"
+→ ResolveLineNumbers → 411-420
+            </div>
+          </div>
+        </div>
+        <p class="src">tools.md「锚定算法」· <a href="https://github.com/alibaba/open-code-review/blob/main/internal/diff/resolver.go">resolver.go</a> · architecture.md「评论处理流水线」</p>
+      </section>
+
+      <!-- 13 compression -->
+      <section class="slide" data-section="实现 · ⑦ 反射">
+        <div>
+          <div class="kicker"><b>13 · 实现 · 反思</b><span>流水线 ⑦/⑧ · REVIEW_FILTER_TASK</span></div>
+          <h1>核查者看到的更少，所以圆不了场</h1>
+        </div>
+        <div>
+          <div class="bound">
+            <div class="panel">
+              <span class="tag llm">生成层 · 子 Agent</span>
+              <h2>可以探索</h2>
+              <p>看 diff，也能用工具读文件、搜调用。评论可能依赖 diff 外上下文。</p>
+            </div>
+            <div class="arrow">→</div>
+            <div class="panel">
+              <span class="tag mix">核查层 · Reflector</span>
+              <h2>只剩 diff</h2>
+              <p>输入：该文件 diff + 评论列表。看不到工具轨迹。同一模型，信息不对称。</p>
+            </div>
+          </div>
+          <ol class="steps">
+            <li><b>证伪，不证实。</b> diff 有直接反证才删。仅「无法证实」必须放行。</li>
+            <li><b>两步。</b> 事实否决 → 再看是否把正常代码说成缺陷 / 把行为说反。</li>
+            <li><b>只能删。</b> 不改写、不新增。解析失败 fail open，全部保留。</li>
+          </ol>
+        </div>
+        <p class="src"><a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/prompts/review_filter_task_system.md">review_filter_task_system.md</a> · <a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/prompts/review_filter_task_user.md">review_filter_task_user.md</a> · 论文 §3.4</p>
+      </section>
+
+      <!-- 15 attribution -->
+      <section class="slide" data-section="实现 · 横切 · Prompt">
+        <div>
+          <div class="kicker"><b>14 · 实现 · Prompt 拓扑</b><span>横跨 ②–⑦ · 六个任务，不是一个万能提示词</span></div>
+          <h1>把不确定性切成可替换的小面</h1>
+        </div>
+        <div>
+          <table>
+            <thead><tr><th>Key</th><th>何时</th><th>做什么</th><th>能否调工具</th></tr></thead>
+            <tbody>
+              <tr><td class="num">GROUPING_TASK</td><td>分发前</td><td>把变更文件聚成语义组（每组 ≤10）</td><td>否（只喂文件元数据）</td></tr>
+              <tr><td class="num">PLAN_TASK</td><td>大 diff 前</td><td>产出审查清单 → plan_guidance</td><td>否（工具名纯文本）</td></tr>
+              <tr><td class="num">MAIN_TASK</td><td>主循环</td><td>探索 + code_comment</td><td>是（六工具）</td></tr>
+              <tr><td class="num">MEMORY_COMPRESSION_TASK</td><td>60%/80%</td><td>摘要中间区</td><td>否</td></tr>
+              <tr><td class="num">RE_LOCATION_TASK</td><td>行匹配失败</td><td>重锚 existing_code</td><td>否</td></tr>
+              <tr><td class="num">REVIEW_FILTER_TASK</td><td>循环后</td><td>按 diff 证伪删评论</td><td>否</td></tr>
+            </tbody>
+          </table>
+          <p class="note" style="margin-top:12px">模板在 <span class="num">task_template.json</span>，占位符如 <span class="num">{{diff}}</span>、<span class="num">{{system_rule}}</span>、<span class="num">{{comments}}</span>。改 prompt 需改模板并重建——这是故意的：审查流程不靠运行时随手改一句自然语言。</p>
+        </div>
+        <p class="src">architecture.md「模板与占位符」· <a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/task_template.json">task_template.json</a></p>
+      </section>
+
+      <!-- 17 cursor integration -->
+      <section class="slide" data-section="原则">
+        <div>
+          <div class="kicker"><b>15 · 可迁移</b><span>带走约束，不带走安装</span></div>
+          <h1>任何要可追责的 Agent，都可以问这三句</h1>
+        </div>
+        <div class="principles">
+          <article class="principle">
+            <div class="n">01</div>
+            <div>
+              <h2>能由程序保证的，不进提示词</h2>
+              <p>文件进不进、规则用哪条、行号落哪一行。错了无法靠「再想一想」补救，就不要交给采样。</p>
+            </div>
+          </article>
+          <article class="principle">
+            <div class="n">02</div>
+            <div>
+              <h2>生成层后面，要有一层自己不能加戏的核查</h2>
+              <p>只能删除被证据打脸的输出。不能改写成新结论。解析失败就原样保留。</p>
+            </div>
+          </article>
+          <article class="principle">
+            <div class="n">03</div>
+            <div>
+              <h2>核查层与生成层之间，要有信息边界</h2>
+              <p>让核查者看到更少。同一模型也可以；挡住自我合理化的是看不见探索过程。</p>
+            </div>
+          </article>
+        </div>
+        <p class="src">对应 Rule-Guided Dispatch、filter-only、asymmetric information boundary。Claude-4.6 同模型差约 13.5 个 SEM-F1 点，大于 OCR 内部极差 7.2；Claude-4.8 同模型只差约 3.8。</p>
+      </section>
+
+      <!-- 23 checklist for team -->
+      <section class="slide" data-section="收束">
+        <div>
+          <div class="kicker"><b>16 · 出处</b><span>链接 · 版本 · 评测规模</span></div>
+          <h1>链接与版本</h1>
+        </div>
+        <ul class="links">
+          <li>论文表 3、§3–§7<br><a href="https://arxiv.org/abs/2608.09290">https://arxiv.org/abs/2608.09290</a><br><a href="https://arxiv.org/html/2608.09290v2">HTML</a> · <a href="https://arxiv.org/pdf/2608.09290">PDF</a></li>
+          <li>AACR-Bench<br><a href="https://arxiv.org/abs/2601.19494">2601.19494</a><br><a href="https://github.com/alibaba/aacr-bench">github.com/alibaba/aacr-bench</a></li>
+          <li>架构 / 工具 / 规则 / 过滤<br><a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/architecture.md">architecture.md</a><br><a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/tools.md">tools.md</a><br><a href="https://github.com/alibaba/open-code-review/blob/main/internal/agent/preview.go">preview.go</a><br><a href="https://github.com/alibaba/open-code-review/blob/main/internal/diff/resolver.go">resolver.go</a></li>
+          <li>反射提示词 · README 现象 · 截图<br><a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/prompts/review_filter_task_user.md">REVIEW_FILTER</a><br><a href="https://github.com/alibaba/open-code-review/blob/main/README.zh-CN.md">README.zh-CN.md</a><br>本地：<span class="num">talks/cursor_ocr_chatlog.png</span><br>版本：OCR v1.3.1 · Claude Code v2.1.169 · Codex v0.140.0<br>200 PR · 50 仓 · 10 语言 · 1,505 标注 · 80+ 工程师</li>
+        </ul>
+        <p class="src">提问。现场演示建议：<span class="num">ocr review --preview</span>。</p>
+      </section>
+
+      <!-- 26 q&a -->
+      <section class="slide" data-section="收束">
+        <div>
+          <div class="kicker"><b>17 · Q&amp;A</b><span>语音服务研发</span></div>
+          <h1>讨论</h1>
+          <p class="sub">欢迎从真实仓的痛点反问：哪些步骤必须确定性？哪些必须留给模型？核查层该看到什么、不该看到什么？</p>
+        </div>
+        <div class="split">
+          <div class="panel">
+            <h2>可能的问题</h2>
+            <ul>
+              <li>和静态扫描 / lint 怎么分工？</li>
+              <li>私有模型端点怎么接？</li>
+              <li>召回不够时能否放宽反射器？</li>
+              <li>大 monorepo 并发与费用怎么控？</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h2>建议带回的作业</h2>
+            <ul>
+              <li>对本周一个 chat_log / 会话相关 PR 跑 preview + review</li>
+              <li>记 10 条评论：采纳 / 误报 / 漏报</li>
+              <li>据此写第一条项目规则</li>
+            </ul>
+          </div>
+        </div>
+        <p class="src">感谢。文件：<span class="num">talks/deterministic-engineering.html</span></p>
+      </section>
+
+    </div>
+  </div>
+</div>
+<div class="chrome">
+  <div class="bar" id="bar"></div>
+  <span id="pos">01 / 28</span>
+  <span id="sec">开场</span>
+  <span>? 帮助 · F 全屏</span>
+</div>
+<div class="help" id="help">
+  <div class="card">
+    <h2>翻页</h2>
+    <p>← → 、空格、PageUp / PageDown。Home / End 到两端。</p>
+    <p>点击画面左缘回退，右缘前进，也可以左右滑动。链接点击不会翻页。</p>
+    <p>F 全屏。? 或 Esc 关闭说明。</p>
+  </div>
+</div>
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var stage = document.getElementById("stage");
+  var frame = document.getElementById("frame");
+  var bar = document.getElementById("bar");
+  var pos = document.getElementById("pos");
+  var sec = document.getElementById("sec");
+  var help = document.getElementById("help");
+  var viewport = document.querySelector(".viewport");
+  var i = 0;
+  var down = null;
+  var gesture = 0;
+  var swallowClick = false;
+
+  function fit() {
+    var vv = window.visualViewport;
+    var w = vv ? vv.width : window.innerWidth;
+    var h = vv ? vv.height : window.innerHeight;
+    var s = Math.min(w / 1280, h / 720);
+    if (!(s > 0) || !isFinite(s)) s = 1;
+    frame.style.width = (1280 * s) + "px";
+    frame.style.height = (720 * s) + "px";
+    // zoom 改变布局盒，让 iOS 的点击区域和看见的画面重合。
+    // transform: scale 只缩放绘制，布局仍是 1280×720，iPhone 上大部分点击会落空。
+    stage.style.zoom = s;
+    stage.style.transform = "none";
+  }
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (el, idx) { el.classList.toggle("on", idx === i); });
+    pos.textContent = String(i + 1).padStart(2, "0") + " / " + String(slides.length).padStart(2, "0");
+    sec.textContent = slides[i].getAttribute("data-section") || "";
+    bar.style.width = ((i + 1) / slides.length * 100) + "%";
+    if (location.hash !== "#" + (i + 1)) history.replaceState(null, "", "#" + (i + 1));
+  }
+
+  function fromHash() {
+    var n = parseInt(location.hash.replace("#", ""), 10);
+    if (n >= 1 && n <= slides.length) show(n - 1);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "?" || (e.key === "h" && e.shiftKey)) { help.classList.toggle("on"); return; }
+    if (e.key === "Escape") { help.classList.remove("on"); return; }
+    if (help.classList.contains("on")) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); show(i + 1); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") { e.preventDefault(); show(i - 1); }
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key === "f" || e.key === "F") {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  function turn(delta) {
+    var token = ++gesture;
+    swallowClick = true;
+    setTimeout(function () { if (token === gesture) swallowClick = false; }, 1000);
+    show(i + delta);
+  }
+
+  function stepFromX(clientX) {
+    var rect = frame.getBoundingClientRect();
+    return (clientX - rect.left) < rect.width * 0.18 ? -1 : 1;
+  }
+
+  function beginGesture(x, y, id, target) {
+    if (help.classList.contains("on")) return;
+    down = {
+      x: x,
+      y: y,
+      id: id,
+      link: !!(target && target.closest && target.closest("a, button"))
+    };
+  }
+
+  function endGesture(x, y) {
+    if (!down) return false;
+    var dx = x - down.x;
+    var dy = y - down.y;
+    var startedOnLink = down.link;
+    down = null;
+    if (help.classList.contains("on")) return false;
+    if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy)) {
+      turn(dx < 0 ? 1 : -1);
+      return true;
+    }
+    if (startedOnLink || Math.abs(dx) > 18 || Math.abs(dy) > 18) return false;
+    turn(stepFromX(x));
+    return true;
+  }
+
+  viewport.addEventListener("pointerdown", function (e) {
+    if (e.pointerType !== "mouse" || e.isPrimary === false || (e.button && e.button !== 0)) return;
+    beginGesture(e.clientX, e.clientY, e.pointerId, e.target);
+    if (down && !down.link) {
+      try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  });
+
+  viewport.addEventListener("pointerup", function (e) {
+    if (!down || down.id !== e.pointerId) return;
+    endGesture(e.clientX, e.clientY);
+  });
+
+  viewport.addEventListener("pointercancel", function (e) {
+    if (down && down.id === e.pointerId) down = null;
+  });
+
+  viewport.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) { down = null; return; }
+    var t = e.touches[0];
+    beginGesture(t.clientX, t.clientY, "touch", e.target);
+  }, { passive: true });
+
+  viewport.addEventListener("touchmove", function (e) {
+    if (!down || down.id !== "touch" || !e.cancelable) return;
+    var dx = e.touches[0].clientX - down.x;
+    var dy = e.touches[0].clientY - down.y;
+    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) e.preventDefault();
+  }, { passive: false });
+
+  viewport.addEventListener("touchend", function (e) {
+    if (!down || down.id !== "touch") return;
+    var t = e.changedTouches[0];
+    if (endGesture(t.clientX, t.clientY)) e.preventDefault();
+  }, { passive: false });
+
+  viewport.addEventListener("touchcancel", function () {
+    if (down && down.id === "touch") down = null;
+  });
+
+  viewport.addEventListener("click", function (e) {
+    if (swallowClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      swallowClick = false;
+      return;
+    }
+    if (help.classList.contains("on")) return;
+    if (e.target.closest("a, button")) return;
+    show(i + stepFromX(e.clientX));
+  });
+
+  help.addEventListener("click", function () { help.classList.remove("on"); });
+  window.addEventListener("resize", fit);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
+  window.addEventListener("hashchange", fromHash);
+  fit();
+  fromHash();
+  if (!location.hash) show(0);
+})();
+</script>
+</body>
+</html>
