@@ -247,9 +247,33 @@
 
   .shot-wrap {
     border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
-    background: #000; max-height: 430px; display: flex; align-items: center; justify-content: center;
+    background: #000; min-height: 0; height: 100%;
+    display: flex; align-items: center; justify-content: center;
   }
-  .shot-wrap img { width: 100%; height: auto; display: block; object-fit: contain; max-height: 430px; }
+  .shot-wrap img {
+    width: 100%; height: 100%; display: block; object-fit: contain;
+  }
+  .slide.shot-full {
+    padding: 12px 14px 40px;
+    gap: 6px;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .slide.shot-full > div:first-child {
+    min-height: 0;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  }
+  .slide.shot-full .kicker { font-size: 11px; flex-shrink: 0; }
+  .slide.shot-full h1.sm {
+    font-size: 16px; line-height: 1.25; margin: 0;
+    color: var(--muted); font-weight: 550; letter-spacing: 0;
+    text-align: right;
+  }
+  .slide.shot-full .shot-wrap {
+    border-radius: 6px; border-color: rgba(244, 241, 234, 0.1);
+  }
+  .slide.shot-full .src {
+    left: 14px; right: 14px; bottom: 10px; font-size: 10px;
+  }
   .shot-side { display: flex; flex-direction: column; gap: 10px; }
   .finding {
     border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
@@ -299,6 +323,39 @@
   .zone .c { background: rgba(196,182,239,0.08); }
   .zone .a { background: rgba(156,190,134,0.08); }
 
+  .chapter-main {
+    display: flex; flex-direction: column; justify-content: center;
+    min-height: 0; gap: 10px; padding-bottom: 24px;
+  }
+  .chapter-num {
+    font-family: var(--mono); font-size: 72px; line-height: 1;
+    color: var(--copper); letter-spacing: -0.04em; font-weight: 650;
+  }
+  .chapter-main h1 { font-size: 40px; max-width: 960px; }
+  .chapter-main .sub { max-width: 720px; }
+  .chapter-meta {
+    margin-top: 10px; color: var(--dim); font-size: 14px;
+    font-family: var(--mono); letter-spacing: 0.04em;
+  }
+
+  .closing {
+    display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 32px;
+    align-items: center; min-height: 0;
+  }
+  .closing .speaker {
+    margin-top: 18px; font-size: 20px; color: var(--muted);
+  }
+  .closing .speaker b { color: var(--ink); font-weight: 650; }
+  .qr-block {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    justify-self: end;
+  }
+  .qr-block img {
+    width: 220px; height: 220px; object-fit: contain;
+    background: #fff; border-radius: 12px; padding: 12px;
+  }
+  .qr-block p { margin: 0; color: var(--dim); font-size: 13px; letter-spacing: 0.06em; }
+
   @media print {
     .viewport { display: block; height: auto; overflow: visible; }
     .frame { width: auto !important; height: auto !important; }
@@ -323,52 +380,16 @@
           <h1 class="hero-title">确定性工程如何驯服不确定的 Agent</h1>
           <p class="sub">Open Code Review 架构解析。同一模型，换一套 Harness——这是一次系统对照，不是模型榜。</p>
           <div class="meta-row">
-            <span class="pill">演讲人 · 语音服务研发</span>
+            <span class="pill">演讲人 · 王金鑫</span>
             <span class="pill">约 60 分钟</span>
           </div>
         </div>
       </section>
 
-      <!-- 0b 结论前置 -->
-      <section class="slide" data-section="开场">
-        <div>
-          <div class="kicker"><b>结论前置 · 同一模型，换一套 Harness</b><span>系统对照，不是模型榜</span></div>
-          <h1>先说结论：换工程，SEM-F1 约 2.2×</h1>
-        </div>
-        <div class="hero-grid">
-          <div class="stat-stack">
-            <div class="stat">
-              <div class="name">SEM-F1<br>论文主指标</div>
-              <div class="path num">CC 11.57% → OCR 25.10%</div>
-              <div class="mult">2.17×</div>
-            </div>
-            <div class="stat">
-              <div class="name">Precision<br>裁判五次均值</div>
-              <div class="path num">CC 7.23% → OCR 33.90%</div>
-              <div class="mult">≈4.7×</div>
-            </div>
-            <div class="stat">
-              <div class="name">Recall<br>OCR 更低</div>
-              <div class="path num">CC 28.90% → OCR 20.00%</div>
-              <div class="mult" style="color:var(--copper)">少而准</div>
-            </div>
-          </div>
-          <div>
-            <p class="sub" style="margin-top:0">后端 Claude-4.6-Opus。OCR v1.3.1 对 Claude Code v2.1.169。2.17× / 4.7× 来自表 3 打印值。SEM-F1、精度、召回都是语义裁判复跑五次的均值，不是审查系统复跑。正文 4,580 与表 5,980 冲突时以表为准。后文 token 与时间是每条 PR 的平均。精度更高、召回更低，是同一组数据里的取舍。</p>
-            <div class="meta-row">
-              <span class="pill">同模型对照</span>
-              <span class="pill">换的是 Harness</span>
-              <span class="pill">数字见论文表 3</span>
-            </div>
-          </div>
-        </div>
-        <p class="src">Li et al., OpenCodeReview, arXiv:2608.09290, 表 3 与 §4.2。<a href="https://arxiv.org/abs/2608.09290">arxiv.org/abs/2608.09290</a></p>
-      </section>
-
       <!-- 1 agenda -->
       <section class="slide" data-section="开场">
         <div>
-          <div class="kicker"><b>00 · 议程</b><span>20 页 · 一小时</span></div>
+          <div class="kicker"><b>00 · 议程</b><span>五章 · 一小时</span></div>
           <h1>今天讲什么、不讲什么</h1>
         </div>
         <div class="agenda">
@@ -382,8 +403,21 @@
         <p class="src">时长按语音服务研发部门技术分享节奏估算；页脚出处全部可点。</p>
       </section>
 
+      <!-- 章 01 -->
+      <section class="slide" data-section="01 · 现象">
+        <div>
+          <div class="kicker"><b>章节 · 01 / 05</b><span>0–10′ · 建立直觉</span></div>
+        </div>
+        <div class="chapter-main">
+          <div class="chapter-num">01</div>
+          <h1>现象与现场截图</h1>
+          <p class="sub">chat_log 里的 botId 遮蔽：先看见发散，再问为什么。</p>
+          <div class="chapter-meta">建立直觉</div>
+        </div>
+      </section>
+
       <!-- 2 conflict -->
-      <section class="slide" data-section="现象">
+      <section class="slide" data-section="01 · 现象">
         <div>
           <div class="kicker"><b>01 · 现象</b><span>先看见发散，再问为什么</span></div>
           <h1>同一个变更，多问一轮</h1>
@@ -417,19 +451,19 @@
       </section>
 
       <!-- 3 screenshot full -->
-      <section class="slide tight" data-section="Demo">
+      <section class="slide tight shot-full" data-section="01 · 现象">
         <div>
-          <div class="kicker"><b>02 · 现场截图</b><span>Cursor 里跑 OCR Review · 业务 chat_log</span></div>
-          <h1 class="sm">直观感受：不是聊天，是结构化审查报告</h1>
+          <div class="kicker"><b>02 · 现场截图</b><span>Cursor · OCR Review · chat_log</span></div>
+          <h1 class="sm">不是聊天，是结构化审查报告</h1>
         </div>
         <div class="shot-wrap">
           <img src="cursor_ocr_chatlog.png" alt="Cursor 中 OCR Review 审查 chat_log 的截图：检出 botId 短变量遮蔽导致日志打空" />
         </div>
-          <p class="src">截图文件：同目录 <span class="num">talks/cursor_ocr_chatlog.png</span>。范围：workspace · <span class="num">get_chat_log.go (+4/-4)</span> · <span class="num">sync_chat_log.go (+10/-5)</span>。问题：High / lines 411–420。截图徽章写 correctness；现行解析会收成 other。</p>
+        <p class="src">截图文件：同目录 <span class="num">talks/cursor_ocr_chatlog.png</span>。范围：workspace · <span class="num">get_chat_log.go (+4/-4)</span> · <span class="num">sync_chat_log.go (+10/-5)</span>。问题：High / lines 411–420。截图徽章写 correctness；现行解析会收成 other。</p>
       </section>
 
       <!-- 4 screenshot anatomy -->
-      <section class="slide" data-section="Demo">
+      <section class="slide" data-section="01 · 现象">
         <div>
           <div class="kicker"><b>03 · 截图拆解</b><span>观众眼里一眼能核对的东西</span></div>
           <h1 class="sm">botId 短变量声明遮蔽 → 日志永远打空</h1>
@@ -469,8 +503,21 @@ botId, ok = ...
         <p class="src">截图同源。OCR 行号由 <span class="num">existing_code</span> 匹配产生，见工具文档「锚定算法」。<a href="https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/zh/tools.md">tools.md</a></p>
       </section>
 
+      <!-- 章 02 -->
+      <section class="slide" data-section="02 · 弱点">
+        <div>
+          <div class="kicker"><b>章节 · 02 / 05</b><span>10–25′ · 为什么不稳</span></div>
+        </div>
+        <div class="chapter-main">
+          <div class="chapter-num">02</div>
+          <h1>通用 Agent 的三个结构性弱点</h1>
+          <p class="sub">覆盖不全、位置漂移、质量不稳——不要归咎「模型不行」。</p>
+          <div class="chapter-meta">为什么不稳</div>
+        </div>
+      </section>
+
       <!-- 5 three weaknesses -->
-      <section class="slide" data-section="现象">
+      <section class="slide" data-section="02 · 弱点">
         <div>
           <div class="kicker"><b>04 · 结构</b><span>不要归咎「模型不行」</span></div>
           <h1>纯语言驱动，审查流程没有硬约束</h1>
@@ -499,8 +546,21 @@ botId, ok = ...
         <p class="src">README 同上。论文 §1–§2：<a href="https://arxiv.org/html/2608.09290v2">arxiv.org/html/2608.09290v2</a></p>
       </section>
 
+      <!-- 章 03 -->
+      <section class="slide" data-section="03 · 流水线">
+        <div>
+          <div class="kicker"><b>章节 · 03 / 05</b><span>25–45′ · 核心</span></div>
+        </div>
+        <div class="chapter-main">
+          <div class="chapter-num">03</div>
+          <h1>OCR 流水线实现</h1>
+          <p class="sub">过滤、规则、分组、子 Agent（工具）、行号、反射——不确定的只有被夹住的那一段。</p>
+          <div class="chapter-meta">核心</div>
+        </div>
+      </section>
+
       <!-- 6 pipeline -->
-      <section class="slide" data-section="架构">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>05 · 流水线</b><span>不确定的只有被夹住的那一段</span></div>
           <h1>模型进场之前，范围已经定了</h1>
@@ -537,7 +597,7 @@ botId, ok = ...
       </section>
 
       <!-- 7 responsibility -->
-      <section class="slide" data-section="架构">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>06 · 职责分离</b><span>全场重点之一</span></div>
           <h1>谁做什么，比提示词写什么更先决定质量</h1>
@@ -588,7 +648,7 @@ botId, ok = ...
       </section>
 
       <!-- 8 five gates -->
-      <section class="slide" data-section="实现 · ② 五重门">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>07 · 实现 · 过滤</b><span>流水线 ②/⑧ · whyExcluded · 不花 token</span></div>
           <h1>五重门：文件集在模型开口前算完</h1>
@@ -624,7 +684,7 @@ botId, ok = ...
       </section>
 
       <!-- 9 rules -->
-      <section class="slide" data-section="实现 · ③ 规则">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>08 · 实现 · 规则</b><span>流水线 ③/⑧ · 四层链 · first-match-wins</span></div>
           <h1>审查标准也是确定性的</h1>
@@ -659,7 +719,7 @@ botId, ok = ...
       </section>
 
       <!-- 9b semantic grouping (流水线 ④) -->
-      <section class="slide" data-section="实现 · ④ 语义分组">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>09 · 实现 · 语义分组</b><span>流水线 ④/⑧ · GROUPING_TASK · 每组 ≤10 文件</span></div>
           <h1>相关文件捆成一组，再按组并行审查</h1>
@@ -690,7 +750,7 @@ botId, ok = ...
       </section>
 
       <!-- 10 subagent -->
-      <section class="slide" data-section="实现 · ⑤ 子 Agent">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>10 · 实现 · 子 Agent</b><span>流水线 ⑤/⑧ · 分而治之（按组） · 默认并发 8</span></div>
           <h1>每个文件组，一个隔离循环</h1>
@@ -715,7 +775,7 @@ botId, ok = ...
       </section>
 
       <!-- 11 tools -->
-      <section class="slide" data-section="实现 · ⑤ 子 Agent · 工具">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>11 · 实现 · 工具集</b><span>流水线 ⑤/⑧ · 六个 · 有界输出 · 不要 bash 自由探索</span></div>
           <h1>审查专用工具，比通用 shell 更可预期</h1>
@@ -738,7 +798,7 @@ botId, ok = ...
       </section>
 
       <!-- 12 line resolve -->
-      <section class="slide" data-section="实现 · ⑥ 行号回贴">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>12 · 实现 · 行号</b><span>流水线 ⑥/⑧ · 消除行号幻觉</span></div>
           <h1>模型不报行号；用 existing_code 片段回贴</h1>
@@ -773,7 +833,7 @@ code_comment 输入（概念）:
       </section>
 
       <!-- 13 compression -->
-      <section class="slide" data-section="实现 · ⑦ 反射">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>13 · 实现 · 反思</b><span>流水线 ⑦/⑧ · REVIEW_FILTER_TASK</span></div>
           <h1>核查者看到的更少，所以圆不了场</h1>
@@ -802,7 +862,7 @@ code_comment 输入（概念）:
       </section>
 
       <!-- 15 attribution -->
-      <section class="slide" data-section="实现 · 横切 · Prompt">
+      <section class="slide" data-section="03 · 流水线">
         <div>
           <div class="kicker"><b>14 · 实现 · Prompt 拓扑</b><span>横跨 ②–⑦ · 六个任务，不是一个万能提示词</span></div>
           <h1>把不确定性切成可替换的小面</h1>
@@ -824,10 +884,72 @@ code_comment 输入（概念）:
         <p class="src">architecture.md「模板与占位符」· <a href="https://github.com/alibaba/open-code-review/blob/main/internal/config/template/task_template.json">task_template.json</a></p>
       </section>
 
-      <!-- 17 cursor integration -->
-      <section class="slide" data-section="原则">
+      <!-- 章 04 -->
+      <section class="slide" data-section="04 · 数据">
         <div>
-          <div class="kicker"><b>15 · 可迁移</b><span>带走约束，不带走安装</span></div>
+          <div class="kicker"><b>章节 · 04 / 05</b><span>45–55′ · 取舍</span></div>
+        </div>
+        <div class="chapter-main">
+          <div class="chapter-num">04</div>
+          <h1>数据结论与召回取舍</h1>
+          <p class="sub">同一模型，换一套 Harness：SEM-F1 约 2.2×，精度更高、召回更低。</p>
+          <div class="chapter-meta">取舍</div>
+        </div>
+      </section>
+
+      <!-- 数据结论 -->
+      <section class="slide" data-section="04 · 数据">
+        <div>
+          <div class="kicker"><b>15 · 数据 · 同一模型，换一套 Harness</b><span>系统对照，不是模型榜</span></div>
+          <h1>换工程，SEM-F1 约 2.2×</h1>
+        </div>
+        <div class="hero-grid">
+          <div class="stat-stack">
+            <div class="stat">
+              <div class="name">SEM-F1<br>论文主指标</div>
+              <div class="path num">CC 11.57% → OCR 25.10%</div>
+              <div class="mult">2.17×</div>
+            </div>
+            <div class="stat">
+              <div class="name">Precision<br>裁判五次均值</div>
+              <div class="path num">CC 7.23% → OCR 33.90%</div>
+              <div class="mult">≈4.7×</div>
+            </div>
+            <div class="stat">
+              <div class="name">Recall<br>OCR 更低</div>
+              <div class="path num">CC 28.90% → OCR 20.00%</div>
+              <div class="mult" style="color:var(--copper)">少而准</div>
+            </div>
+          </div>
+          <div>
+            <p class="sub" style="margin-top:0">后端 Claude-4.6-Opus。OCR v1.3.1 对 Claude Code v2.1.169。2.17× / 4.7× 来自表 3 打印值。SEM-F1、精度、召回都是语义裁判复跑五次的均值，不是审查系统复跑。正文 4,580 与表 5,980 冲突时以表为准。后文 token 与时间是每条 PR 的平均。精度更高、召回更低，是同一组数据里的取舍。</p>
+            <div class="meta-row">
+              <span class="pill">同模型对照</span>
+              <span class="pill">换的是 Harness</span>
+              <span class="pill">数字见论文表 3</span>
+            </div>
+          </div>
+        </div>
+        <p class="src">Li et al., OpenCodeReview, arXiv:2608.09290, 表 3 与 §4.2。<a href="https://arxiv.org/abs/2608.09290">arxiv.org/abs/2608.09290</a></p>
+      </section>
+
+      <!-- 章 05 -->
+      <section class="slide" data-section="05 · 收束">
+        <div>
+          <div class="kicker"><b>章节 · 05 / 05</b><span>55–60′ · 收束</span></div>
+        </div>
+        <div class="chapter-main">
+          <div class="chapter-num">05</div>
+          <h1>可迁移原则与提问</h1>
+          <p class="sub">带走约束，不带走安装；对照语音业务场景，再开放讨论。</p>
+          <div class="chapter-meta">收束</div>
+        </div>
+      </section>
+
+      <!-- 17 cursor integration -->
+      <section class="slide" data-section="05 · 收束">
+        <div>
+          <div class="kicker"><b>16 · 可迁移</b><span>带走约束，不带走安装</span></div>
           <h1>任何要可追责的 Agent，都可以问这三句</h1>
         </div>
         <div class="principles">
@@ -857,9 +979,9 @@ code_comment 输入（概念）:
       </section>
 
       <!-- 23 checklist for team -->
-      <section class="slide" data-section="收束">
+      <section class="slide" data-section="05 · 收束">
         <div>
-          <div class="kicker"><b>16 · 出处</b><span>链接 · 版本 · 评测规模</span></div>
+          <div class="kicker"><b>17 · 出处</b><span>链接 · 版本 · 评测规模</span></div>
           <h1>链接与版本</h1>
         </div>
         <ul class="links">
@@ -872,32 +994,22 @@ code_comment 输入（概念）:
       </section>
 
       <!-- 26 q&a -->
-      <section class="slide" data-section="收束">
+      <section class="slide" data-section="05 · 讨论">
         <div>
-          <div class="kicker"><b>17 · Q&amp;A</b><span>语音服务研发</span></div>
+          <div class="kicker"><b>18 · 讨论</b><span>语音服务研发</span></div>
           <h1>讨论</h1>
-          <p class="sub">欢迎从真实仓的痛点反问：哪些步骤必须确定性？哪些必须留给模型？核查层该看到什么、不该看到什么？</p>
         </div>
-        <div class="split">
-          <div class="panel">
-            <h2>可能的问题</h2>
-            <ul>
-              <li>和静态扫描 / lint 怎么分工？</li>
-              <li>私有模型端点怎么接？</li>
-              <li>召回不够时能否放宽反射器？</li>
-              <li>大 monorepo 并发与费用怎么控？</li>
-            </ul>
+        <div class="closing">
+          <div>
+            <h1 class="hero-title" style="font-size:34px">确定性工程如何驯服不确定的 Agent</h1>
+            <p class="speaker">演讲人 · <b>王金鑫</b></p>
+            <p class="sub" style="margin-top:14px">扫码留下培训反馈，欢迎继续追问。</p>
           </div>
-          <div class="panel">
-            <h2>建议带回的作业</h2>
-            <ul>
-              <li>对本周一个 chat_log / 会话相关 PR 跑 preview + review</li>
-              <li>记 10 条评论：采纳 / 误报 / 漏报</li>
-              <li>据此写第一条项目规则</li>
-            </ul>
+          <div class="qr-block">
+            <img src="分享PPT培训反馈二维码.png" alt="培训反馈二维码" />
+            <p>培训反馈</p>
           </div>
         </div>
-        <p class="src">感谢。文件：<span class="num">talks/deterministic-engineering.html</span></p>
       </section>
 
     </div>
